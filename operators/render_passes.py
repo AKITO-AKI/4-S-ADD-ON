@@ -93,7 +93,7 @@ def _setup_depth_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> No
     tree.links.new(map_range.outputs[0], file_out.inputs[0])
 
 
-def _setup_normal_pass(scene: bpy.types.Scene, out_dir: str) -> None:
+def _setup_normal_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> None:
     """Normal (法線) パス設定"""
     scene.use_nodes = True
     tree = scene.node_tree
@@ -110,7 +110,7 @@ def _setup_normal_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     file_out.base_path = os.path.join(out_dir, "normal")
     file_out.format.file_format = "PNG"
     file_out.format.color_mode = "RGB"
-    file_out.format.color_depth = "16"
+    file_out.format.color_depth = str(getattr(props, "normal_color_depth", "16"))
     file_out.file_slots[0].path = "frame_"
 
     view_layer = scene.view_layers.get("ViewLayer")
@@ -230,6 +230,7 @@ def _setup_lineart_driver(scene: bpy.types.Scene, props: object) -> None:
     for name, target, data_path in defs:
         var = driver.variables.new()
         var.name = name
+        # driver target は scene または camera object のみを使う設計。
         var.targets[0].id_type = "SCENE" if target == scene else "OBJECT"
         var.targets[0].id = target
         var.targets[0].data_path = data_path
@@ -258,13 +259,13 @@ def _setup_lineart_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> 
     file_out.format.color_mode = "RGBA"
     file_out.file_slots[0].path = "frame_"
 
-    aa = tree.nodes.new("CompositorNodeFilter")
-    aa.location = (20, 0)
-    aa.filter_type = "SOFTEN"
+    lineart_aa_filter = tree.nodes.new("CompositorNodeFilter")
+    lineart_aa_filter.location = (20, 0)
+    lineart_aa_filter.filter_type = "SOFTEN"
 
-    tree.links.new(rl.outputs["Image"], aa.inputs["Image"])
-    tree.links.new(aa.outputs["Image"], composite.inputs["Image"])
-    tree.links.new(aa.outputs["Image"], file_out.inputs[0])
+    tree.links.new(rl.outputs["Image"], lineart_aa_filter.inputs["Image"])
+    tree.links.new(lineart_aa_filter.outputs["Image"], composite.inputs["Image"])
+    tree.links.new(lineart_aa_filter.outputs["Image"], file_out.inputs[0])
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +302,7 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         if props.render_lineart:
             passes_to_render.append(("lineart", lambda s, d: _setup_lineart_pass(s, d, props)))
         if props.render_normal:
-            passes_to_render.append(("normal", _setup_normal_pass))
+            passes_to_render.append(("normal", lambda s, d: _setup_normal_pass(s, d, props)))
         if props.render_mask:
             passes_to_render.append(("mask", lambda s, d: _setup_mask_pass(s, d, None)))
         if props.render_base_color:

@@ -101,6 +101,15 @@ class SoloStudioProperties(PropertyGroup):
         min=0.01,
         max=10.0,
     )
+    normal_color_depth: EnumProperty(
+        name="Normal深度",
+        description="Normalマップの色深度",
+        items=[
+            ("8", "8-bit", "容量を抑えた通常品質"),
+            ("16", "16-bit", "高精度（法線情報の劣化を抑制）"),
+        ],
+        default="16",
+    )
 
     # ------------------------------------------------------------------
     # Phase 2: ユーザーリファレンス管理

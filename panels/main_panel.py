@@ -96,6 +96,10 @@ class SOLOSTUDIO_PT_RenderPasses(_SoloStudioPanelBase):
         row.prop(props, "lineart_min_thickness")
         row.prop(props, "lineart_max_thickness")
 
+        box = layout.box()
+        box.label(text="Normal 出力", icon="NORMALS_FACE")
+        box.prop(props, "normal_color_depth")
+
         layout.separator()
         layout.operator(
             "solo_studio.render_passes",

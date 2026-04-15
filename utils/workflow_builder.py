@@ -11,9 +11,10 @@ ComfyUI API 形式の辞書として生成するモジュール。
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Optional
+
+_MAX_CAMERA_VELOCITY_SAMPLES = 120
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +379,8 @@ def params_from_scene_props(props: object, scene: object | None = None) -> Workf
     char_ref_image は ComfyUI input/ フォルダへのアップロード後のファイル名
     を想定しているため、ここではパス末尾のファイル名のみを使用します。
     """
+    import os
+
     char_ref = ""
     if props.char_ref_path:
         import bpy
@@ -454,8 +457,12 @@ def _estimate_camera_velocity(scene: object | None) -> float:
         return 0.0
 
     total_frames = frame_end - frame_start
-    # 約120サンプル以内になるよう間引き、長尺アニメでも速度推定を軽量化する。
-    sample_step = 1 if total_frames <= 120 else max(2, total_frames // 120)
+    # 固定上限サンプル以内になるよう間引き、長尺アニメでも速度推定を軽量化する。
+    sample_step = (
+        1
+        if total_frames <= _MAX_CAMERA_VELOCITY_SAMPLES
+        else max(2, total_frames // _MAX_CAMERA_VELOCITY_SAMPLES)
+    )
     prev = [float(fc.evaluate(frame_start)) for fc in loc_curves[:3]]
     max_speed = 0.0
     for frame in range(frame_start + sample_step, frame_end + 1, sample_step):

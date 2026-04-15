@@ -454,14 +454,16 @@ def _estimate_camera_velocity(scene: object | None) -> float:
     if frame_end <= frame_start:
         return 0.0
 
+    total_frames = frame_end - frame_start
+    sample_step = 1 if total_frames <= 120 else max(2, total_frames // 120)
     prev = [float(fc.evaluate(frame_start)) for fc in loc_curves[:3]]
     max_speed = 0.0
-    for frame in range(frame_start + 1, frame_end + 1):
+    for frame in range(frame_start + sample_step, frame_end + 1, sample_step):
         current = [float(fc.evaluate(frame)) for fc in loc_curves[:3]]
         dx = current[0] - prev[0]
         dy = current[1] - prev[1]
         dz = current[2] - prev[2]
-        speed = (dx * dx + dy * dy + dz * dz) ** 0.5
+        speed = ((dx * dx + dy * dy + dz * dz) ** 0.5) / sample_step
         max_speed = max(max_speed, speed)
         prev = current
     return max_speed

@@ -19,6 +19,11 @@ import os
 import bpy
 from bpy.types import Operator, Context
 
+_LINEART_DISTANCE_DRIVER_EXPR = (
+    "max(line_min, min(line_max, line_base * line_ref / max("
+    "sqrt((cam_x-tgt_x)**2 + (cam_y-tgt_y)**2 + (cam_z-tgt_z)**2), 0.001)))"
+)
+
 
 # ---------------------------------------------------------------------------
 # ユーティリティ
@@ -52,6 +57,7 @@ def _setup_depth_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> No
     near = float(getattr(props, "depth_near", 2.0))
     far = float(getattr(props, "depth_far", 10.0))
     if far <= near:
+        print("[SoloStudio] Depth正規化設定が不正なため far を自動補正しました。")
         far = near + 0.01
     map_range.inputs[1].default_value = near
     map_range.inputs[2].default_value = far
@@ -185,7 +191,9 @@ def _setup_lineart_driver(scene: bpy.types.Scene, props: object) -> None:
 
     focus_obj = getattr(cam.data, "dof", None)
     focus_obj = getattr(focus_obj, "focus_object", None)
-    target_loc = focus_obj.matrix_world.translation if focus_obj else (0.0, 0.0, 0.0)
+    if focus_obj is None:
+        return
+    target_loc = focus_obj.matrix_world.translation
 
     scene["solo_lineart_target_x"] = float(target_loc[0])
     scene["solo_lineart_target_y"] = float(target_loc[1])
@@ -203,10 +211,8 @@ def _setup_lineart_driver(scene: bpy.types.Scene, props: object) -> None:
     fcurve = scene.render.driver_add("line_thickness")
     driver = fcurve.driver
     driver.type = "SCRIPTED"
-    driver.expression = (
-        "max(line_min, min(line_max, line_base * line_ref / max("
-        "sqrt((cam_x-tgt_x)**2 + (cam_y-tgt_y)**2 + (cam_z-tgt_z)**2), 0.001)))"
-    )
+    # 基準距離に対して逆比例で太さを補正し、最小/最大値にクランプする。
+    driver.expression = _LINEART_DISTANCE_DRIVER_EXPR
 
     defs = [
         ("cam_x", cam, "location.x"),

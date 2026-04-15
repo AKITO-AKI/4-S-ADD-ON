@@ -1,0 +1,18 @@
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Blender add-on zip archives
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db

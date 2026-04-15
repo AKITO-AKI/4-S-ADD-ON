@@ -80,6 +80,23 @@ class SOLOSTUDIO_PT_RenderPasses(_SoloStudioPanelBase):
         row.prop(props, "render_base_color", toggle=True)
 
         layout.separator()
+        box = layout.box()
+        box.label(text="Depth 正規化 (Z-Depth Clipping)", icon="DRIVER_DISTANCE")
+        row = box.row(align=True)
+        row.prop(props, "depth_near")
+        row.prop(props, "depth_far")
+
+        box = layout.box()
+        box.label(text="Lineart 均一化 / AA", icon="MOD_LINEART")
+        box.prop(props, "lineart_ref_distance")
+        row = box.row(align=True)
+        row.prop(props, "lineart_base_thickness")
+        row.prop(props, "lineart_aa_filter_size")
+        row = box.row(align=True)
+        row.prop(props, "lineart_min_thickness")
+        row.prop(props, "lineart_max_thickness")
+
+        layout.separator()
         layout.operator(
             "solo_studio.render_passes",
             text="マルチパスレンダリング",
@@ -111,6 +128,22 @@ class SOLOSTUDIO_PT_AIGeneration(_SoloStudioPanelBase):
         col.prop(props, "steps")
         col.prop(props, "cfg_scale")
         col.prop(props, "seed")
+        col.prop(props, "controlnet_start_percent")
+        col.prop(props, "controlnet_end_percent")
+        col.prop(props, "use_ip_adapter_mask")
+
+        layout.separator()
+        layout.label(text="FreeU:", icon="MOD_SMOOTH")
+        col = layout.column(align=True)
+        col.prop(props, "use_freeu")
+        sub = col.column(align=True)
+        sub.enabled = props.use_freeu
+        row = sub.row(align=True)
+        row.prop(props, "freeu_b1")
+        row.prop(props, "freeu_b2")
+        row = sub.row(align=True)
+        row.prop(props, "freeu_s1")
+        row.prop(props, "freeu_s2")
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +164,11 @@ class SOLOSTUDIO_PT_AnimateDiff(_SoloStudioPanelBase):
         col = layout.column(align=True)
         col.prop(props, "context_length", text="コンテキスト長")
         col.prop(props, "context_overlap", text="重複フレーム数")
+        col.prop(props, "auto_context_overlap")
+        sub = col.column(align=True)
+        sub.enabled = props.auto_context_overlap
+        sub.prop(props, "camera_velocity_threshold")
+        sub.prop(props, "context_overlap_high_motion")
 
 
 # ---------------------------------------------------------------------------

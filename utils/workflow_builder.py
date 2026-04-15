@@ -11,7 +11,6 @@ ComfyUI API 形式の辞書として生成するモジュール。
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,21 +42,33 @@ class WorkflowParams:
     frame_count: int = 16
     context_length: int = 16
     context_overlap: int = 4
+    context_stride: int = 1
     fps: int = 8
 
     # --- ControlNet 強度 ---
     depth_strength: float = 0.75
     lineart_strength: float = 0.65
     normal_strength: float = 0.55
+    controlnet_start: float = 0.0
+    controlnet_end: float = 0.8
 
     # --- IP-Adapter ---
     ip_adapter_strength: float = 0.70
+    use_ip_adapter_mask: bool = True
 
     # --- 入力ファイルパス (ComfyUI input/ フォルダからの相対名) ---
     depth_image: str = "depth/frame_0001.png"
     lineart_image: str = "lineart/frame_0001.png"
     normal_image: str = "normal/frame_0001.png"
+    mask_image: str = "mask/frame_0001.png"
     char_ref_image: str = "char_ref.png"
+
+    # --- FreeU ---
+    use_freeu: bool = True
+    freeu_b1: float = 1.1
+    freeu_b2: float = 1.2
+    freeu_s1: float = 0.6
+    freeu_s2: float = 0.4
 
     # --- モデル名 ---
     checkpoint: str = "animagineXLV31_v31.safetensors"
@@ -119,23 +130,40 @@ def build_workflow(params: WorkflowParams) -> dict:
     n_load_depth    = ids.next()  # 4
     n_load_lineart  = ids.next()  # 5
     n_load_normal   = ids.next()  # 6
-    n_load_ref      = ids.next()  # 7
-    n_cn_depth      = ids.next()  # 8
-    n_cn_lineart    = ids.next()  # 9
-    n_cn_normal     = ids.next()  # 10
-    n_cn_apply_d    = ids.next()  # 11
-    n_cn_apply_l    = ids.next()  # 12
-    n_cn_apply_n    = ids.next()  # 13
-    n_clip_vision   = ids.next()  # 14
-    n_ipa_loader    = ids.next()  # 15
-    n_ipa           = ids.next()  # 16
-    n_animatediff   = ids.next()  # 17
-    n_ksampler      = ids.next()  # 18
-    n_vae_decode    = ids.next()  # 19
-    n_video_out     = ids.next()  # 20
-    n_empty_latent  = ids.next()  # 21
+    n_load_mask     = ids.next()  # 7
+    n_load_ref      = ids.next()  # 8
+    n_cn_depth      = ids.next()  # 9
+    n_cn_lineart    = ids.next()  # 10
+    n_cn_normal     = ids.next()  # 11
+    n_cn_apply_d    = ids.next()  # 12
+    n_cn_apply_l    = ids.next()  # 13
+    n_cn_apply_n    = ids.next()  # 14
+    n_clip_vision   = ids.next()  # 15
+    n_ipa_loader    = ids.next()  # 16
+    n_ipa           = ids.next()  # 17
+    n_animatediff   = ids.next()  # 18
+    n_freeu         = ids.next()  # 19
+    n_ksampler      = ids.next()  # 20
+    n_vae_decode    = ids.next()  # 21
+    n_video_out     = ids.next()  # 22
+    n_empty_latent  = ids.next()  # 23
 
     seed_val = params.seed if params.seed >= 0 else _random_seed()
+
+    ipa_inputs = {
+        "model": [n_checkpoint, 0],
+        "ipadapter": [n_ipa_loader, 0],
+        "image": [n_load_ref, 0],
+        "clip_vision": [n_clip_vision, 0],
+        "weight": params.ip_adapter_strength,
+        "weight_type": "linear",
+        "combine_embeds": "concat",
+        "start_at": 0.0,
+        "end_at": 1.0,
+        "embeds_scaling": "V only",
+    }
+    if params.use_ip_adapter_mask:
+        ipa_inputs["attn_mask"] = [n_load_mask, 0]
 
     workflow: dict = {
         # --- チェックポイントロード ---
@@ -173,6 +201,10 @@ def build_workflow(params: WorkflowParams) -> dict:
             "class_type": "LoadImage",
             "inputs": {"image": params.normal_image, "upload": "image"},
         },
+        n_load_mask: {
+            "class_type": "LoadImage",
+            "inputs": {"image": params.mask_image, "upload": "image"},
+        },
         n_load_ref: {
             "class_type": "LoadImage",
             "inputs": {"image": params.char_ref_image, "upload": "image"},
@@ -201,8 +233,8 @@ def build_workflow(params: WorkflowParams) -> dict:
                 "control_net": [n_cn_depth, 0],
                 "image": [n_load_depth, 0],
                 "strength": params.depth_strength,
-                "start_percent": 0.0,
-                "end_percent": 1.0,
+                "start_percent": params.controlnet_start,
+                "end_percent": params.controlnet_end,
             },
         },
 
@@ -215,8 +247,8 @@ def build_workflow(params: WorkflowParams) -> dict:
                 "control_net": [n_cn_lineart, 0],
                 "image": [n_load_lineart, 0],
                 "strength": params.lineart_strength,
-                "start_percent": 0.0,
-                "end_percent": 1.0,
+                "start_percent": params.controlnet_start,
+                "end_percent": params.controlnet_end,
             },
         },
 
@@ -229,8 +261,8 @@ def build_workflow(params: WorkflowParams) -> dict:
                 "control_net": [n_cn_normal, 0],
                 "image": [n_load_normal, 0],
                 "strength": params.normal_strength,
-                "start_percent": 0.0,
-                "end_percent": 1.0,
+                "start_percent": params.controlnet_start,
+                "end_percent": params.controlnet_end,
             },
         },
 
@@ -245,18 +277,7 @@ def build_workflow(params: WorkflowParams) -> dict:
         },
         n_ipa: {
             "class_type": "IPAdapterAdvanced",
-            "inputs": {
-                "model": [n_checkpoint, 0],
-                "ipadapter": [n_ipa_loader, 0],
-                "image": [n_load_ref, 0],
-                "clip_vision": [n_clip_vision, 0],
-                "weight": params.ip_adapter_strength,
-                "weight_type": "linear",
-                "combine_embeds": "concat",
-                "start_at": 0.0,
-                "end_at": 1.0,
-                "embeds_scaling": "V only",
-            },
+            "inputs": ipa_inputs,
         },
 
         # --- AnimateDiff (Sliding Window Context) ---
@@ -267,13 +288,23 @@ def build_workflow(params: WorkflowParams) -> dict:
                 "motion_model": params.animatediff_motion_module,
                 "context_options": {
                     "context_length": params.context_length,
-                    "context_stride": 1,
+                    "context_stride": params.context_stride,
                     "context_overlap": params.context_overlap,
                     "context_schedule": "uniform",
                     "closed_loop": False,
                 },
                 "motion_scale": 1.0,
                 "apply_v2_models_properly": True,
+            },
+        },
+        n_freeu: {
+            "class_type": "FreeU",
+            "inputs": {
+                "model": [n_animatediff, 0],
+                "b1": params.freeu_b1,
+                "b2": params.freeu_b2,
+                "s1": params.freeu_s1,
+                "s2": params.freeu_s2,
             },
         },
 
@@ -291,7 +322,7 @@ def build_workflow(params: WorkflowParams) -> dict:
         n_ksampler: {
             "class_type": "KSampler",
             "inputs": {
-                "model": [n_animatediff, 0],
+                "model": [n_freeu, 0] if params.use_freeu else [n_animatediff, 0],
                 "positive": [n_cn_apply_n, 0],
                 "negative": [n_cn_apply_n, 1],
                 "latent_image": [n_empty_latent, 0],
@@ -340,7 +371,7 @@ def _random_seed() -> int:
     return random.randint(0, 2**32 - 1)
 
 
-def params_from_scene_props(props: object) -> WorkflowParams:
+def params_from_scene_props(props: object, scene: object | None = None) -> WorkflowParams:
     """
     Blender シーンの SoloStudioProperties から WorkflowParams を生成する。
     char_ref_image は ComfyUI input/ フォルダへのアップロード後のファイル名
@@ -354,6 +385,11 @@ def params_from_scene_props(props: object) -> WorkflowParams:
         abs_path = bpy.path.abspath(props.char_ref_path)
         char_ref = os.path.basename(abs_path)
 
+    cn_start, cn_end = _sanitize_controlnet_window(
+        float(getattr(props, "controlnet_start_percent", 0.0)),
+        float(getattr(props, "controlnet_end_percent", 0.8)),
+    )
+
     return WorkflowParams(
         positive_prompt=props.positive_prompt,
         negative_prompt=props.negative_prompt,
@@ -362,6 +398,70 @@ def params_from_scene_props(props: object) -> WorkflowParams:
         seed=props.seed,
         frame_count=props.context_length,
         context_length=props.context_length,
-        context_overlap=props.context_overlap,
+        context_overlap=_resolve_context_overlap(props, scene),
+        controlnet_start=cn_start,
+        controlnet_end=cn_end,
+        use_ip_adapter_mask=bool(getattr(props, "use_ip_adapter_mask", True)),
+        use_freeu=bool(getattr(props, "use_freeu", True)),
+        freeu_b1=float(getattr(props, "freeu_b1", 1.1)),
+        freeu_b2=float(getattr(props, "freeu_b2", 1.2)),
+        freeu_s1=float(getattr(props, "freeu_s1", 0.6)),
+        freeu_s2=float(getattr(props, "freeu_s2", 0.4)),
         char_ref_image=char_ref or "char_ref.png",
     )
+
+
+def _resolve_context_overlap(props: object, scene: object | None) -> int:
+    """カメラ移動量に応じた context_overlap の簡易自動補正。"""
+    overlap = getattr(props, "context_overlap", 4)
+    if not getattr(props, "auto_context_overlap", False):
+        return overlap
+
+    velocity = _estimate_camera_velocity(scene)
+    threshold = float(getattr(props, "camera_velocity_threshold", 0.1))
+    high_motion_overlap = int(getattr(props, "context_overlap_high_motion", 8))
+
+    if velocity >= threshold:
+        return max(overlap, high_motion_overlap)
+    return overlap
+
+
+def _sanitize_controlnet_window(start: float, end: float) -> tuple[float, float]:
+    start = max(0.0, min(1.0, float(start)))
+    end = max(0.0, min(1.0, float(end)))
+    if end < start:
+        end = start
+    return start, end
+
+
+def _estimate_camera_velocity(scene: object | None) -> float:
+    if scene is None:
+        return 0.0
+    camera = getattr(scene, "camera", None)
+    if camera is None:
+        return 0.0
+    data = getattr(camera, "animation_data", None)
+    action = getattr(data, "action", None)
+    if action is None:
+        return 0.0
+
+    loc_curves = [fc for fc in getattr(action, "fcurves", []) if fc.data_path == "location"]
+    if len(loc_curves) < 3:
+        return 0.0
+
+    frame_start = int(getattr(scene, "frame_start", 1))
+    frame_end = int(getattr(scene, "frame_end", frame_start + 1))
+    if frame_end <= frame_start:
+        return 0.0
+
+    prev = [float(fc.evaluate(frame_start)) for fc in loc_curves[:3]]
+    max_speed = 0.0
+    for frame in range(frame_start + 1, frame_end + 1):
+        current = [float(fc.evaluate(frame)) for fc in loc_curves[:3]]
+        dx = current[0] - prev[0]
+        dy = current[1] - prev[1]
+        dz = current[2] - prev[2]
+        speed = (dx * dx + dy * dy + dz * dz) ** 0.5
+        max_speed = max(max_speed, speed)
+        prev = current
+    return max_speed

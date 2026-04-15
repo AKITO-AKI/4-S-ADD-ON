@@ -84,7 +84,7 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
                 )
 
         # --- ワークフロー構築 ---
-        wf_params = params_from_scene_props(props)
+        wf_params = params_from_scene_props(props, context.scene)
         wf_params.char_ref_image = char_ref_name
         workflow = build_workflow(wf_params)
 

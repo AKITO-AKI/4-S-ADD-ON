@@ -38,7 +38,7 @@ def _frame_range(scene: bpy.types.Scene) -> tuple[int, int]:
 # サブオペレーション: パスごとのシーン設定
 # ---------------------------------------------------------------------------
 
-def _setup_depth_pass(scene: bpy.types.Scene, out_dir: str) -> None:
+def _setup_depth_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> None:
     """Mist / Z-depth パス設定"""
     scene.use_nodes = True
     tree = scene.node_tree
@@ -47,8 +47,17 @@ def _setup_depth_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     rl = tree.nodes.new("CompositorNodeRLayers")
     rl.location = (-300, 0)
 
-    normalize = tree.nodes.new("CompositorNodeNormalize")
-    normalize.location = (0, 0)
+    map_range = tree.nodes.new("CompositorNodeMapRange")
+    map_range.location = (0, 0)
+    near = float(getattr(props, "depth_near", 2.0))
+    far = float(getattr(props, "depth_far", 10.0))
+    if far <= near:
+        far = near + 0.01
+    map_range.inputs[1].default_value = near
+    map_range.inputs[2].default_value = far
+    map_range.inputs[3].default_value = 0.0
+    map_range.inputs[4].default_value = 1.0
+    map_range.use_clamp = True
 
     composite = tree.nodes.new("CompositorNodeComposite")
     composite.location = (300, 0)
@@ -61,11 +70,19 @@ def _setup_depth_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     file_out.file_slots[0].path = "frame_"
 
     # Mist パスを有効化
-    scene.view_layers["ViewLayer"].use_pass_mist = True
+    view_layer = scene.view_layers.get("ViewLayer")
+    if view_layer is not None:
+        view_layer.use_pass_mist = True
 
-    tree.links.new(rl.outputs["Mist"], normalize.inputs[0])
-    tree.links.new(normalize.outputs[0], composite.inputs["Image"])
-    tree.links.new(normalize.outputs[0], file_out.inputs[0])
+    if scene.world is not None and hasattr(scene.world, "mist_settings"):
+        mist = scene.world.mist_settings
+        mist.use_mist = True
+        mist.start = near
+        mist.depth = far - near
+
+    tree.links.new(rl.outputs["Mist"], map_range.inputs[0])
+    tree.links.new(map_range.outputs[0], composite.inputs["Image"])
+    tree.links.new(map_range.outputs[0], file_out.inputs[0])
 
 
 def _setup_normal_pass(scene: bpy.types.Scene, out_dir: str) -> None:
@@ -85,9 +102,13 @@ def _setup_normal_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     file_out.base_path = os.path.join(out_dir, "normal")
     file_out.format.file_format = "PNG"
     file_out.format.color_mode = "RGB"
+    file_out.format.color_depth = "16"
     file_out.file_slots[0].path = "frame_"
 
-    scene.view_layers["ViewLayer"].use_pass_normal = True
+    view_layer = scene.view_layers.get("ViewLayer")
+    if view_layer is not None:
+        view_layer.use_pass_normal = True
+    scene.view_settings.view_transform = "Raw"
 
     tree.links.new(rl.outputs["Normal"], composite.inputs["Image"])
     tree.links.new(rl.outputs["Normal"], file_out.inputs[0])
@@ -154,10 +175,66 @@ def _setup_base_color_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     tree.links.new(rl.outputs["DiffCol"], file_out.inputs[0])
 
 
-def _setup_lineart_pass(scene: bpy.types.Scene, out_dir: str) -> None:
+def _setup_lineart_driver(scene: bpy.types.Scene, props: object) -> None:
+    """カメラ距離に応じてFreestyleの線幅を補正するドライバーを設定。"""
+    if not hasattr(scene.render, "line_thickness"):
+        return
+    cam = scene.camera
+    if cam is None:
+        return
+
+    focus_obj = getattr(cam.data, "dof", None)
+    focus_obj = getattr(focus_obj, "focus_object", None)
+    target_loc = focus_obj.matrix_world.translation if focus_obj else (0.0, 0.0, 0.0)
+
+    scene["solo_lineart_target_x"] = float(target_loc[0])
+    scene["solo_lineart_target_y"] = float(target_loc[1])
+    scene["solo_lineart_target_z"] = float(target_loc[2])
+    scene["solo_lineart_ref_distance"] = float(getattr(props, "lineart_ref_distance", 5.0))
+    scene["solo_lineart_base_thickness"] = float(getattr(props, "lineart_base_thickness", 1.0))
+    scene["solo_lineart_min_thickness"] = float(getattr(props, "lineart_min_thickness", 0.5))
+    scene["solo_lineart_max_thickness"] = float(getattr(props, "lineart_max_thickness", 3.0))
+
+    scene.render.line_thickness = float(getattr(props, "lineart_base_thickness", 1.0))
+    try:
+        scene.render.driver_remove("line_thickness")
+    except Exception:
+        pass
+    fcurve = scene.render.driver_add("line_thickness")
+    driver = fcurve.driver
+    driver.type = "SCRIPTED"
+    driver.expression = (
+        "max(line_min, min(line_max, line_base * line_ref / max("
+        "sqrt((cam_x-tgt_x)**2 + (cam_y-tgt_y)**2 + (cam_z-tgt_z)**2), 0.001)))"
+    )
+
+    defs = [
+        ("cam_x", cam, "location.x"),
+        ("cam_y", cam, "location.y"),
+        ("cam_z", cam, "location.z"),
+        ("tgt_x", scene, '["solo_lineart_target_x"]'),
+        ("tgt_y", scene, '["solo_lineart_target_y"]'),
+        ("tgt_z", scene, '["solo_lineart_target_z"]'),
+        ("line_ref", scene, '["solo_lineart_ref_distance"]'),
+        ("line_base", scene, '["solo_lineart_base_thickness"]'),
+        ("line_min", scene, '["solo_lineart_min_thickness"]'),
+        ("line_max", scene, '["solo_lineart_max_thickness"]'),
+    ]
+    for name, target, data_path in defs:
+        var = driver.variables.new()
+        var.name = name
+        var.targets[0].id_type = "SCENE" if target == scene else "OBJECT"
+        var.targets[0].id = target
+        var.targets[0].data_path = data_path
+
+
+def _setup_lineart_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> None:
     """Lineart / Freestyle パス設定"""
     scene.use_nodes = True
     scene.render.use_freestyle = True
+    scene.render.line_thickness_mode = "ABSOLUTE"
+    scene.render.filter_size = float(getattr(props, "lineart_aa_filter_size", 1.5))
+    _setup_lineart_driver(scene, props)
     tree = scene.node_tree
     tree.nodes.clear()
 
@@ -174,8 +251,13 @@ def _setup_lineart_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     file_out.format.color_mode = "RGBA"
     file_out.file_slots[0].path = "frame_"
 
-    tree.links.new(rl.outputs["Image"], composite.inputs["Image"])
-    tree.links.new(rl.outputs["Image"], file_out.inputs[0])
+    aa = tree.nodes.new("CompositorNodeFilter")
+    aa.location = (20, 0)
+    aa.filter_type = "SOFTEN"
+
+    tree.links.new(rl.outputs["Image"], aa.inputs["Image"])
+    tree.links.new(aa.outputs["Image"], composite.inputs["Image"])
+    tree.links.new(aa.outputs["Image"], file_out.inputs[0])
 
 
 # ---------------------------------------------------------------------------
@@ -202,14 +284,15 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         # --- レンダーエンジン / 設定を保存 ---
         orig_engine = scene.render.engine
         orig_use_nodes = scene.use_nodes
+        orig_view_transform = scene.view_settings.view_transform
         orig_node_tree = None  # node_tree は直接保存できないため None
 
         passes_to_render: list[tuple[str, callable]] = []
 
         if props.render_depth:
-            passes_to_render.append(("depth", _setup_depth_pass))
+            passes_to_render.append(("depth", lambda s, d: _setup_depth_pass(s, d, props)))
         if props.render_lineart:
-            passes_to_render.append(("lineart", _setup_lineart_pass))
+            passes_to_render.append(("lineart", lambda s, d: _setup_lineart_pass(s, d, props)))
         if props.render_normal:
             passes_to_render.append(("normal", _setup_normal_pass))
         if props.render_mask:
@@ -236,6 +319,7 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         # --- 設定を復元 ---
         scene.render.engine = orig_engine
         scene.use_nodes = orig_use_nodes
+        scene.view_settings.view_transform = orig_view_transform
 
         self.report(
             {"INFO"},

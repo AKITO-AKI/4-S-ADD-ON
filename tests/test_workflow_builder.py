@@ -78,6 +78,10 @@ class TestBuildWorkflow(unittest.TestCase):
             3,
             f"Expected 3 ControlNetApplyAdvanced nodes, got {len(nodes)}",
         )
+    
+    def test_has_freeu_node(self) -> None:
+        node = self._find_node("FreeU")
+        self.assertIsNotNone(node, "FreeU node not found")
 
     # --- Sampler params --------------------------------------------------
 
@@ -121,6 +125,12 @@ class TestBuildWorkflow(unittest.TestCase):
         # First apply node corresponds to depth
         depth_node = nodes[0]
         self.assertAlmostEqual(depth_node["inputs"]["strength"], 0.9)
+    
+    def test_controlnet_end_percent_defaults_to_0_8(self) -> None:
+        wf = build_workflow(WorkflowParams())
+        nodes = self._find_all_nodes_in("ControlNetApplyAdvanced", wf)
+        for node in nodes:
+            self.assertAlmostEqual(node["inputs"]["end_percent"], 0.8)
 
     # --- All node ids are unique -----------------------------------------
 
@@ -159,6 +169,17 @@ class TestParamsFromSceneProps(unittest.TestCase):
             context_length=16,
             context_overlap=4,
             char_ref_path="",
+            auto_context_overlap=False,
+            camera_velocity_threshold=0.1,
+            context_overlap_high_motion=8,
+            controlnet_start_percent=0.0,
+            controlnet_end_percent=0.8,
+            use_ip_adapter_mask=True,
+            use_freeu=True,
+            freeu_b1=1.1,
+            freeu_b2=1.2,
+            freeu_s1=0.6,
+            freeu_s2=0.4,
         )
         defaults.update(kwargs)
         return types.SimpleNamespace(**defaults)
@@ -187,6 +208,18 @@ class TestParamsFromSceneProps(unittest.TestCase):
         props = self._make_props(char_ref_path="//my_char.png")
         params = params_from_scene_props(props)
         self.assertEqual(params.char_ref_image, "my_char.png")
+
+    def test_controlnet_window_mapped(self) -> None:
+        props = self._make_props(controlnet_start_percent=0.2, controlnet_end_percent=0.7)
+        params = params_from_scene_props(props)
+        self.assertAlmostEqual(params.controlnet_start, 0.2)
+        self.assertAlmostEqual(params.controlnet_end, 0.7)
+
+    def test_controlnet_window_sanitized(self) -> None:
+        props = self._make_props(controlnet_start_percent=0.9, controlnet_end_percent=0.2)
+        params = params_from_scene_props(props)
+        self.assertAlmostEqual(params.controlnet_start, 0.9)
+        self.assertAlmostEqual(params.controlnet_end, 0.9)
 
 
 class TestWorkflowParams(unittest.TestCase):

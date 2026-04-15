@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-_MAX_CAMERA_VELOCITY_SAMPLES = 120
+_CAMERA_VELOCITY_SAMPLE_LIMIT = 120
 
 
 # ---------------------------------------------------------------------------
@@ -460,8 +460,8 @@ def _estimate_camera_velocity(scene: object | None) -> float:
     # 固定上限サンプル以内になるよう間引き、長尺アニメでも速度推定を軽量化する。
     sample_step = (
         1
-        if total_frames <= _MAX_CAMERA_VELOCITY_SAMPLES
-        else max(2, total_frames // _MAX_CAMERA_VELOCITY_SAMPLES)
+        if total_frames <= _CAMERA_VELOCITY_SAMPLE_LIMIT
+        else max(2, total_frames // _CAMERA_VELOCITY_SAMPLE_LIMIT)
     )
     prev = [float(fc.evaluate(frame_start)) for fc in loc_curves[:3]]
     max_speed = 0.0
@@ -470,7 +470,7 @@ def _estimate_camera_velocity(scene: object | None) -> float:
         dx = current[0] - prev[0]
         dy = current[1] - prev[1]
         dz = current[2] - prev[2]
-        speed = ((dx * dx + dy * dy + dz * dz) ** 0.5) / sample_step
+        speed = (dx * dx + dy * dy + dz * dz) ** 0.5
         max_speed = max(max_speed, speed)
         prev = current
     return max_speed

@@ -22,8 +22,8 @@ from bpy.types import Operator, Context
 _LINEART_DISTANCE_DRIVER_EXPR = (
     # 線幅 = base_thickness * (ref_distance / camera-target distance)
     # を最小/最大値でクランプし、遠景で潰れ・近景で太りすぎる問題を抑える。
-    "max(line_min, min(line_max, line_base * line_ref / max("
-    "sqrt((cam_x-tgt_x)**2 + (cam_y-tgt_y)**2 + (cam_z-tgt_z)**2), 0.001)))"
+    "max(line_min, min(line_max, line_base * line_ref / "
+    "max(sqrt((cam_x-tgt_x)**2 + (cam_y-tgt_y)**2 + (cam_z-tgt_z)**2), 0.001)))"
 )
 
 
@@ -231,7 +231,12 @@ def _setup_lineart_driver(scene: bpy.types.Scene, props: object) -> None:
         var = driver.variables.new()
         var.name = name
         # driver target は scene または camera object のみを使う設計。
-        var.targets[0].id_type = "SCENE" if target == scene else "OBJECT"
+        if target == scene:
+            var.targets[0].id_type = "SCENE"
+        elif target == cam:
+            var.targets[0].id_type = "OBJECT"
+        else:
+            continue
         var.targets[0].id = target
         var.targets[0].data_path = data_path
 
@@ -259,13 +264,14 @@ def _setup_lineart_pass(scene: bpy.types.Scene, out_dir: str, props: object) -> 
     file_out.format.color_mode = "RGBA"
     file_out.file_slots[0].path = "frame_"
 
-    lineart_aa_filter = tree.nodes.new("CompositorNodeFilter")
-    lineart_aa_filter.location = (20, 0)
-    lineart_aa_filter.filter_type = "SOFTEN"
+    # SOFTENフィルタをLineartのアンチエイリアス補助として使用。
+    lineart_soften_filter = tree.nodes.new("CompositorNodeFilter")
+    lineart_soften_filter.location = (20, 0)
+    lineart_soften_filter.filter_type = "SOFTEN"
 
-    tree.links.new(rl.outputs["Image"], lineart_aa_filter.inputs["Image"])
-    tree.links.new(lineart_aa_filter.outputs["Image"], composite.inputs["Image"])
-    tree.links.new(lineart_aa_filter.outputs["Image"], file_out.inputs[0])
+    tree.links.new(rl.outputs["Image"], lineart_soften_filter.inputs["Image"])
+    tree.links.new(lineart_soften_filter.outputs["Image"], composite.inputs["Image"])
+    tree.links.new(lineart_soften_filter.outputs["Image"], file_out.inputs[0])
 
 
 # ---------------------------------------------------------------------------

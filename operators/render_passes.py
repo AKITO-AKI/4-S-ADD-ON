@@ -20,6 +20,8 @@ import bpy
 from bpy.types import Operator, Context
 
 _LINEART_DISTANCE_DRIVER_EXPR = (
+    # 線幅 = base_thickness * (ref_distance / camera-target distance)
+    # を最小/最大値でクランプし、遠景で潰れ・近景で太りすぎる問題を抑える。
     "max(line_min, min(line_max, line_base * line_ref / max("
     "sqrt((cam_x-tgt_x)**2 + (cam_y-tgt_y)**2 + (cam_z-tgt_z)**2), 0.001)))"
 )
@@ -114,7 +116,6 @@ def _setup_normal_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     view_layer = scene.view_layers.get("ViewLayer")
     if view_layer is not None:
         view_layer.use_pass_normal = True
-    scene.view_settings.view_transform = "Raw"
 
     tree.links.new(rl.outputs["Normal"], composite.inputs["Image"])
     tree.links.new(rl.outputs["Normal"], file_out.inputs[0])
@@ -318,6 +319,10 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
             )
             scene.render.engine = "CYCLES"
             setup_fn(scene, out_dir)
+            if pass_name == "normal":
+                scene.view_settings.view_transform = "Raw"
+            else:
+                scene.view_settings.view_transform = orig_view_transform
 
             # アニメーションレンダリング実行
             bpy.ops.render.render(animation=True, write_still=False)

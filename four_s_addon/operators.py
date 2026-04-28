@@ -35,7 +35,7 @@ class ComfyUIWebSocketClient:
             return
         self._running = True
         self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread = threading.Thread(target=self._run_loop, daemon=False)
         self._thread.start()
         self._future = asyncio.run_coroutine_threadsafe(
             self._connect_and_listen(host, port, payload),
@@ -45,6 +45,8 @@ class ComfyUIWebSocketClient:
 
     def stop(self) -> None:
         self._running = False
+        if self._future and not self._future.done():
+            self._future.cancel()
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
 
@@ -58,7 +60,12 @@ class ComfyUIWebSocketClient:
         try:
             import websockets
         except ImportError as exc:
-            self._queue.put(("error", f"websockets 未インストール: {exc}"))
+            self._queue.put(
+                (
+                    "error",
+                    f"websockets ライブラリがインストールされていません。エラー: {exc}",
+                )
+            )
             return
 
         url = f"ws://{host}:{port}/ws"
@@ -101,6 +108,7 @@ class ComfyUIWebSocketClient:
 
 
 _active_client: ComfyUIWebSocketClient | None = None
+_client_lock = threading.Lock()
 
 
 class FOURS_OT_Generate(Operator):
@@ -114,9 +122,10 @@ class FOURS_OT_Generate(Operator):
         global _active_client
         props = context.scene.four_s
 
-        if _active_client and _active_client.is_running:
-            self.report({"WARNING"}, "すでに生成中です。")
-            return {"CANCELLED"}
+        with _client_lock:
+            if _active_client and _active_client.is_running:
+                self.report({"WARNING"}, "すでに生成中です。")
+                return {"CANCELLED"}
 
         payload = {
             "prompt": props.prompt,
@@ -127,8 +136,9 @@ class FOURS_OT_Generate(Operator):
         props.status_message = "接続中..."
         props.is_running = True
 
-        _active_client = ComfyUIWebSocketClient(props)
-        _active_client.start("127.0.0.1", 8188, payload)
+        with _client_lock:
+            _active_client = ComfyUIWebSocketClient(props)
+            _active_client.start("127.0.0.1", 8188, payload)
         return {"FINISHED"}
 
 
@@ -137,4 +147,9 @@ def register() -> None:
 
 
 def unregister() -> None:
+    global _active_client
+    with _client_lock:
+        if _active_client:
+            _active_client.stop()
+            _active_client = None
     bpy.utils.unregister_class(FOURS_OT_Generate)

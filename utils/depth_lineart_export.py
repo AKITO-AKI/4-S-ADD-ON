@@ -11,6 +11,8 @@ import sys
 
 import bpy
 
+COLOR_MODE_BW = "BW"
+
 
 def _ensure_dir(path: str) -> str:
     os.makedirs(path, exist_ok=True)
@@ -89,7 +91,7 @@ def export_depth_lineart(output_root: str | None = None) -> None:
 
     view_layer.use_pass_mist = True
     _setup_depth_nodes(scene)
-    _configure_render_output(scene, os.path.join(depth_dir, "depth_"), "BW")
+    _configure_render_output(scene, os.path.join(depth_dir, "depth_"), COLOR_MODE_BW)
     bpy.ops.render.render(animation=True, write_still=False)
 
     scene.render.use_freestyle = True
@@ -100,7 +102,7 @@ def export_depth_lineart(output_root: str | None = None) -> None:
     scene.render.film_transparent = True
     _ensure_freestyle_lines(view_layer)
     _setup_lineart_nodes(scene)
-    _configure_render_output(scene, os.path.join(lineart_dir, "lineart_"), "BW")
+    _configure_render_output(scene, os.path.join(lineart_dir, "lineart_"), COLOR_MODE_BW)
     bpy.ops.render.render(animation=True, write_still=False)
 
 

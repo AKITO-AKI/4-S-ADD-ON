@@ -65,7 +65,7 @@ def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
             abs_tol=CFG_COMPARE_ABS_TOL,
         ):
             print(
-                "警告: 'cfg' と 'cfg_scale' が同時指定されています。"
+                "警告: 'cfg' と 'cfg_scale' の値が異なるため、"
                 "'cfg_scale' を優先します。",
                 file=sys.stderr,
             )
@@ -74,9 +74,9 @@ def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
         params.positive_prompt = str(overrides["prompt"])
     if "negative_prompt" in overrides:
         params.negative_prompt = str(overrides["negative_prompt"])
-    if cfg_scale_float is not None and cfg_value_float is None:
+    elif cfg_scale_float is not None:
         params.cfg_scale = cfg_scale_float
-    if cfg_value_float is not None and cfg_scale_float is None:
+    elif cfg_value_float is not None:
         params.cfg_scale = cfg_value_float
     if "steps" in overrides:
         params.steps = _parse_int(overrides["steps"], "steps")

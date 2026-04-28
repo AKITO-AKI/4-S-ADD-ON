@@ -59,6 +59,7 @@ class ComfyUIWebSocketClient:
                 self._props.status_message = (
                     "WebSocket スレッドの終了待機がタイムアウトしました。"
                 )
+                print("[4'S] WebSocket スレッドが終了していません。")
 
     def _run_loop(self) -> None:
         if self._loop is None:
@@ -98,9 +99,12 @@ class ComfyUIWebSocketClient:
 
     def _poll(self) -> float | None:
         if self._future and self._future.done():
-            exc = self._future.exception()
-            if exc:
-                self._queue.put(("error", f"生成エラー: {exc}"))
+            if self._future.cancelled():
+                self._queue.put(("error", "生成がキャンセルされました。"))
+            else:
+                exc = self._future.exception()
+                if exc:
+                    self._queue.put(("error", f"生成エラー: {exc}"))
 
         while not self._queue.empty():
             kind, message = self._queue.get()
@@ -141,7 +145,7 @@ class FOURS_OT_Generate(Operator):
                 return {"CANCELLED"}
 
         payload = {
-            "prompt": props.prompt,
+            "prompt": props.generation_prompt,
             "style_strength": props.style_strength,
             "lora": props.lora,
         }

@@ -328,6 +328,7 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
         ]
 
         _cleanup_finished_background_renders()
+        log_file: IO[str] | None = None
         try:
             # ログはバックグラウンドプロセス存続中に書き込まれるため開いたまま保持する
             log_file = open(log_path, "w", encoding="utf-8")
@@ -337,7 +338,7 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
                 stderr=subprocess.STDOUT,
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            if "log_file" in locals():
+            if log_file is not None:
                 log_file.close()
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
             return {"CANCELLED"}

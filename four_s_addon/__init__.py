@@ -29,7 +29,7 @@ bl_info = {
 
 
 class FourSProperties(PropertyGroup):
-    prompt: StringProperty(
+    generation_prompt: StringProperty(
         name="プロンプト",
         description="生成プロンプト",
         default="",

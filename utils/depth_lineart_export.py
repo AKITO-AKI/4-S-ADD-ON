@@ -89,7 +89,7 @@ def export_depth_lineart(output_root: str | None = None) -> None:
     depth_dir = _ensure_dir(os.path.join(base_dir, "depth"))
     lineart_dir = _ensure_dir(os.path.join(base_dir, "lineart"))
 
-    # Depth → Lineart の順でフルアニメーションを連続レンダリング
+    # Depth -> Lineart の順でフルアニメーションを連続レンダリング
     print(f"[SoloStudio] Rendering frames {scene.frame_start} - {scene.frame_end}")
     view_layer.use_pass_mist = True
     _setup_depth_nodes(scene)

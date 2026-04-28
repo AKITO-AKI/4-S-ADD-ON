@@ -19,7 +19,7 @@ class FOURS_PT_MainPanel(Panel):
         layout = self.layout
         props = context.scene.four_s
 
-        layout.prop(props, "prompt", text="プロンプト")
+        layout.prop(props, "generation_prompt", text="プロンプト")
         layout.prop(props, "style_strength", text="スタイル強度", slider=True)
         layout.prop(props, "lora", text="LoRA")
 

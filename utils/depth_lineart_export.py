@@ -100,7 +100,7 @@ def export_depth_lineart(output_root: str | None = None) -> None:
     scene.render.film_transparent = True
     _ensure_freestyle_lines(view_layer)
     _setup_lineart_nodes(scene)
-    _configure_render_output(scene, os.path.join(lineart_dir, "lineart_"), "RGB")
+    _configure_render_output(scene, os.path.join(lineart_dir, "lineart_"), "BW")
     bpy.ops.render.render(animation=True, write_still=False)
 
 

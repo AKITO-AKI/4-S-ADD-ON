@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from typing import IO
 import bpy
 from bpy.types import Operator, Context
 
@@ -25,7 +26,7 @@ from bpy.types import Operator, Context
 # ユーティリティ
 # ---------------------------------------------------------------------------
 
-_active_background_renders: list[tuple[subprocess.Popen, object]] = []
+_active_background_renders: list[tuple[subprocess.Popen, IO[str]]] = []
 
 
 def _cleanup_finished_background_renders() -> None:
@@ -308,11 +309,15 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
         _cleanup_finished_background_renders()
         try:
             log_file = open(log_path, "w", encoding="utf-8")
-            process = subprocess.Popen(
-                command,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-            )
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                )
+            except Exception:
+                log_file.close()
+                raise
         except Exception as exc:
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
             return {"CANCELLED"}

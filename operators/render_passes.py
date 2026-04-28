@@ -278,6 +278,7 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
             return {"CANCELLED"}
 
         output_root = bpy.path.abspath("//")
+        log_path = os.path.join(output_root, "depth_lineart_render.log")
         command = [
             blender_bin,
             "-b",
@@ -289,16 +290,22 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
         ]
 
         try:
-            subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                process = subprocess.Popen(
+                    command,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                )
         except Exception as exc:
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
             return {"CANCELLED"}
 
-        self.report({"INFO"}, "バックグラウンドで Depth/Lineart を出力しています。")
+        self.report(
+            {"INFO"},
+            f"バックグラウンドで Depth/Lineart を出力しています。"
+            f" (PID: {process.pid})",
+        )
+        self.report({"INFO"}, f"ログ出力: {log_path}")
         return {"FINISHED"}
 
 

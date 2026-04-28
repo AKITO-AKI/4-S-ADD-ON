@@ -16,9 +16,9 @@ from bpy.types import Operator, Context
 if TYPE_CHECKING:
     from . import FourSProperties
 
-POLL_INTERVAL = 0.2
-THREAD_JOIN_TIMEOUT = 0.5
-CONNECT_TIMEOUT = 5.0
+POLL_INTERVAL_SECONDS = 0.2
+THREAD_JOIN_TIMEOUT_SECONDS = 0.5
+CONNECT_TIMEOUT_SECONDS = 5.0
 
 
 class ComfyUIWebSocketClient:
@@ -45,7 +45,7 @@ class ComfyUIWebSocketClient:
             self._connect_and_listen(host, port, payload),
             self._loop,
         )
-        bpy.app.timers.register(self._poll, first_interval=POLL_INTERVAL)
+        bpy.app.timers.register(self._poll, first_interval=POLL_INTERVAL_SECONDS)
 
     def stop(self) -> None:
         self._running = False
@@ -54,9 +54,11 @@ class ComfyUIWebSocketClient:
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=THREAD_JOIN_TIMEOUT)
+            self._thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
             if self._thread.is_alive():
-                print("[4'S] WebSocket スレッドの終了待機がタイムアウトしました。")
+                self._props.status_message = (
+                    "WebSocket スレッドの終了待機がタイムアウトしました。"
+                )
 
     def _run_loop(self) -> None:
         if self._loop is None:
@@ -78,7 +80,10 @@ class ComfyUIWebSocketClient:
 
         url = f"ws://{host}:{port}/ws"
         try:
-            async with websockets.connect(url, open_timeout=CONNECT_TIMEOUT) as websocket:
+            async with websockets.connect(
+                url,
+                open_timeout=CONNECT_TIMEOUT_SECONDS,
+            ) as websocket:
                 await websocket.send(json.dumps(payload))
                 async for message in websocket:
                     self._queue.put(("message", str(message)))
@@ -112,7 +117,7 @@ class ComfyUIWebSocketClient:
                 self.stop()
                 return None
 
-        return POLL_INTERVAL
+        return POLL_INTERVAL_SECONDS
 
 
 _active_client: ComfyUIWebSocketClient | None = None

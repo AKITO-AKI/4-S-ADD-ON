@@ -110,9 +110,11 @@ def main() -> int:
             timeout=args.timeout,
         )
         elapsed = time.perf_counter() - start
+        output_count = max(len(output_files), 1)
+        per_image = elapsed / output_count
         print(
-            f"{index:02d}/{args.runs} 回目: 1枚あたり {elapsed:.2f} 秒 "
-            f"(出力: {', '.join(output_files)})"
+            f"{index:02d}/{args.runs} 回目: 1枚あたり {per_image:.2f} 秒 "
+            f"(合計: {elapsed:.2f} 秒, 出力: {', '.join(output_files)})"
         )
 
     return 0
@@ -120,7 +122,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        sys.exit(main())
     except Exception as exc:
         print(f"エラー: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        sys.exit(1)

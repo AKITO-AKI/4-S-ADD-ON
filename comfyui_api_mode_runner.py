@@ -36,9 +36,11 @@ def _load_override_params(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
-    if "cfg" in overrides and "cfg_scale" in overrides:
-        cfg_value = float(overrides["cfg"])
-        cfg_scale_value = float(overrides["cfg_scale"])
+    cfg_value = overrides.get("cfg")
+    cfg_scale_value = overrides.get("cfg_scale")
+    if cfg_value is not None and cfg_scale_value is not None:
+        cfg_value = float(cfg_value)
+        cfg_scale_value = float(cfg_scale_value)
         if not math.isclose(
             cfg_value,
             cfg_scale_value,
@@ -50,14 +52,15 @@ def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
                 " 'cfg_scale' を優先します。",
                 file=sys.stderr,
             )
+        params.cfg_scale = cfg_scale_value
     if "prompt" in overrides:
         params.positive_prompt = str(overrides["prompt"])
     if "negative_prompt" in overrides:
         params.negative_prompt = str(overrides["negative_prompt"])
-    if "cfg" in overrides:
-        params.cfg_scale = float(overrides["cfg"])
-    if "cfg_scale" in overrides:
-        params.cfg_scale = float(overrides["cfg_scale"])
+    if cfg_scale_value is not None and cfg_value is None:
+        params.cfg_scale = float(cfg_scale_value)
+    if cfg_value is not None and cfg_scale_value is None:
+        params.cfg_scale = float(cfg_value)
     if "steps" in overrides:
         params.steps = int(overrides["steps"])
     if "seed" in overrides:
@@ -123,7 +126,7 @@ def main() -> int:
     print(f"JSON 上書き内容: {json.dumps(overrides, ensure_ascii=False)}")
     print(f"実行回数: {args.runs}")
 
-    for index in range(1, args.runs + 1):
+    for run_number in range(1, args.runs + 1):
         start = time.perf_counter()
         response = queue_prompt(args.host, args.port, workflow)
         prompt_id = response.get("prompt_id")
@@ -141,13 +144,13 @@ def main() -> int:
         output_count = len(output_files)
         if output_count == 0:
             print(
-                f"{index:02d}/{args.runs} 回目: 出力なし "
+                f"{run_number:02d}/{args.runs} 回目: 出力なし "
                 f"(生成時間: {elapsed:.2f} 秒)"
             )
         else:
             per_image = elapsed / output_count
             print(
-                f"{index:02d}/{args.runs} 回目: 1枚あたり {per_image:.2f} 秒 "
+                f"{run_number:02d}/{args.runs} 回目: 1枚あたり {per_image:.2f} 秒 "
                 f"(合計: {elapsed:.2f} 秒, 出力: {', '.join(output_files)})"
             )
 

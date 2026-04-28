@@ -25,6 +25,22 @@ from bpy.types import Operator, Context
 # ユーティリティ
 # ---------------------------------------------------------------------------
 
+_active_background_renders: list[tuple[subprocess.Popen, object]] = []
+
+
+def _cleanup_finished_background_renders() -> None:
+    still_active: list[tuple[subprocess.Popen, object]] = []
+    for process, log_file in _active_background_renders:
+        if process.poll() is None:
+            still_active.append((process, log_file))
+        else:
+            try:
+                log_file.close()
+            except Exception:
+                pass
+    _active_background_renders[:] = still_active
+
+
 def _ensure_dir(path: str) -> str:
     abs_path = bpy.path.abspath(path)
     os.makedirs(abs_path, exist_ok=True)
@@ -289,21 +305,22 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
             output_root,
         ]
 
+        _cleanup_finished_background_renders()
         try:
-            with open(log_path, "w", encoding="utf-8") as log_file:
-                process = subprocess.Popen(
-                    command,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                )
+            log_file = open(log_path, "w", encoding="utf-8")
+            process = subprocess.Popen(
+                command,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
         except Exception as exc:
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
             return {"CANCELLED"}
 
+        _active_background_renders.append((process, log_file))
         self.report(
             {"INFO"},
-            f"バックグラウンドで Depth/Lineart を出力しています。"
-            f" (PID: {process.pid})",
+            f"バックグラウンドで Depth/Lineart を出力しています。 (PID: {process.pid})",
         )
         self.report({"INFO"}, f"ログ出力: {log_path}")
         return {"FINISHED"}

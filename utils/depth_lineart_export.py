@@ -89,6 +89,7 @@ def export_depth_lineart(output_root: str | None = None) -> None:
     depth_dir = _ensure_dir(os.path.join(base_dir, "depth"))
     lineart_dir = _ensure_dir(os.path.join(base_dir, "lineart"))
 
+    # Depth → Lineart の順でフルアニメーションを連続レンダリング
     view_layer.use_pass_mist = True
     _setup_depth_nodes(scene)
     _configure_render_output(scene, os.path.join(depth_dir, "depth_"), COLOR_MODE_BW)

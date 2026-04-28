@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from . import FourSProperties
 
 POLL_INTERVAL = 0.2
+THREAD_JOIN_TIMEOUT = 0.5
+CONNECT_TIMEOUT = 5.0
 
 
 class ComfyUIWebSocketClient:
@@ -37,7 +39,7 @@ class ComfyUIWebSocketClient:
             return
         self._running = True
         self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._run_loop, daemon=False)
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         self._future = asyncio.run_coroutine_threadsafe(
             self._connect_and_listen(host, port, payload),
@@ -52,7 +54,7 @@ class ComfyUIWebSocketClient:
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=0.5)
+            self._thread.join(timeout=THREAD_JOIN_TIMEOUT)
 
     def _run_loop(self) -> None:
         if self._loop is None:
@@ -74,7 +76,7 @@ class ComfyUIWebSocketClient:
 
         url = f"ws://{host}:{port}/ws"
         try:
-            async with websockets.connect(url) as websocket:
+            async with websockets.connect(url, open_timeout=CONNECT_TIMEOUT) as websocket:
                 await websocket.send(json.dumps(payload))
                 async for message in websocket:
                     self._queue.put(("message", str(message)))

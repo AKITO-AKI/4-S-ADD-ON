@@ -27,7 +27,7 @@ from bpy.types import Operator, Context
 # ユーティリティ
 # ---------------------------------------------------------------------------
 
-# _active_background_renders はメインスレッドからのみ操作する想定
+# _active_background_renders は複数オペレーター実行に備えてロックで保護する
 _active_background_renders: list[tuple[subprocess.Popen, IO[str]]] = []
 _background_lock = threading.Lock()
 

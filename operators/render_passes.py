@@ -30,7 +30,7 @@ _active_background_renders: list[tuple[subprocess.Popen, IO[str]]] = []
 
 
 def _cleanup_finished_background_renders() -> None:
-    still_active: list[tuple[subprocess.Popen, object]] = []
+    still_active: list[tuple[subprocess.Popen, IO[str]]] = []
     for process, log_file in _active_background_renders:
         if process.poll() is None:
             still_active.append((process, log_file))
@@ -307,18 +307,17 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
         ]
 
         _cleanup_finished_background_renders()
+        log_file: IO[str] | None = None
         try:
             log_file = open(log_path, "w", encoding="utf-8")
-            try:
-                process = subprocess.Popen(
-                    command,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                )
-            except Exception:
-                log_file.close()
-                raise
+            process = subprocess.Popen(
+                command,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
         except Exception as exc:
+            if log_file is not None:
+                log_file.close()
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
             return {"CANCELLED"}
 

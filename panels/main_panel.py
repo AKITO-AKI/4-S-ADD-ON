@@ -85,6 +85,11 @@ class SOLOSTUDIO_PT_RenderPasses(_SoloStudioPanelBase):
             text="マルチパスレンダリング",
             icon="RENDER_ANIMATION",
         )
+        layout.operator(
+            "solo_studio.render_depth_lineart",
+            text="Depth/Lineart をバックグラウンド出力",
+            icon="RENDER_ANIMATION",
+        )
 
 
 # ---------------------------------------------------------------------------

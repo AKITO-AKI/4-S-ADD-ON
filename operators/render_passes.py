@@ -16,6 +16,9 @@ Blender から AI に必要な素材を全自動で出力します。
 from __future__ import annotations
 
 import os
+import subprocess
+import threading
+from typing import IO
 import bpy
 from bpy.types import Operator, Context
 
@@ -23,6 +26,42 @@ from bpy.types import Operator, Context
 # ---------------------------------------------------------------------------
 # ユーティリティ
 # ---------------------------------------------------------------------------
+
+# _active_background_renders は複数オペレーター実行に備えてロックで保護する
+_active_background_renders: list[tuple[subprocess.Popen, IO[str]]] = []
+_background_lock = threading.Lock()
+
+
+def _cleanup_finished_background_renders() -> None:
+    with _background_lock:
+        still_active: list[tuple[subprocess.Popen, IO[str]]] = []
+        for process, log_file in _active_background_renders:
+            if process.poll() is None:
+                still_active.append((process, log_file))
+            else:
+                try:
+                    log_file.close()
+                except OSError:
+                    pass
+        _active_background_renders[:] = still_active
+
+
+def _background_cleanup_timer() -> float | None:
+    _cleanup_finished_background_renders()
+    with _background_lock:
+        has_active = bool(_active_background_renders)
+    return 5.0 if has_active else None
+
+
+def _close_background_renders() -> None:
+    with _background_lock:
+        for _, log_file in _active_background_renders:
+            try:
+                log_file.close()
+            except OSError:
+                pass
+        _active_background_renders.clear()
+
 
 def _ensure_dir(path: str) -> str:
     abs_path = bpy.path.abspath(path)
@@ -245,9 +284,85 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         return {"FINISHED"}
 
 
+class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
+    """Depth / Lineart をバックグラウンドでレンダリングして出力する"""
+
+    bl_idname = "solo_studio.render_depth_lineart"
+    bl_label = "Depth/Lineart をバックグラウンド出力"
+    bl_description = "Blender をバックグラウンド起動して Depth/Lineart を書き出します"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context: Context) -> set[str]:
+        blend_path = bpy.data.filepath
+        if not blend_path:
+            self.report({"ERROR"}, "Blend ファイルを保存してから実行してください。")
+            return {"CANCELLED"}
+
+        blender_bin = bpy.app.binary_path
+        if not blender_bin:
+            self.report({"ERROR"}, "Blender 実行ファイルが見つかりません。")
+            return {"CANCELLED"}
+
+        script_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "utils",
+                "depth_lineart_export.py",
+            )
+        )
+        if not os.path.isfile(script_path):
+            self.report({"ERROR"}, f"スクリプトが見つかりません: {script_path}")
+            return {"CANCELLED"}
+
+        output_root = bpy.path.abspath("//")
+        log_path = os.path.join(output_root, "depth_lineart_render.log")
+        command = [
+            blender_bin,
+            "-b",
+            blend_path,
+            "--python",
+            script_path,
+            "--",
+            output_root,
+        ]
+
+        _cleanup_finished_background_renders()
+        log_file: IO[str] | None = None
+        try:
+            # ログはバックグラウンドプロセス存続中に書き込まれるため開いたまま保持する
+            log_file = open(log_path, "w", encoding="utf-8")
+            process = subprocess.Popen(
+                command,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            if log_file is not None:
+                log_file.close()
+            self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
+            return {"CANCELLED"}
+
+        with _background_lock:
+            _active_background_renders.append((process, log_file))
+        if not bpy.app.timers.is_registered(_background_cleanup_timer):
+            bpy.app.timers.register(_background_cleanup_timer, first_interval=5.0)
+        self.report(
+            {"INFO"},
+            f"バックグラウンドで Depth/Lineart を出力しています。 (PID: {process.pid})",
+        )
+        self.report({"INFO"}, f"ログ出力: {log_path}")
+        return {"FINISHED"}
+
+
 def register() -> None:
     bpy.utils.register_class(SOLOSTUDIO_OT_RenderPasses)
+    bpy.utils.register_class(SOLOSTUDIO_OT_RenderDepthLineart)
 
 
 def unregister() -> None:
+    if bpy.app.timers.is_registered(_background_cleanup_timer):
+        bpy.app.timers.unregister(_background_cleanup_timer)
+    _close_background_renders()
+    bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderDepthLineart)
     bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderPasses)

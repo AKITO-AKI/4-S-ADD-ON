@@ -29,6 +29,15 @@ def _load_override_params(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
+    if "cfg" in overrides and "cfg_scale" in overrides:
+        cfg_value = float(overrides["cfg"])
+        cfg_scale_value = float(overrides["cfg_scale"])
+        if cfg_value != cfg_scale_value:
+            print(
+                "警告: 'cfg' と 'cfg_scale' が同時指定されています。"
+                " 'cfg_scale' を優先します。",
+                file=sys.stderr,
+            )
     if "prompt" in overrides:
         params.positive_prompt = str(overrides["prompt"])
     if "negative_prompt" in overrides:
@@ -110,12 +119,18 @@ def main() -> int:
             timeout=args.timeout,
         )
         elapsed = time.perf_counter() - start
-        output_count = max(len(output_files), 1)
-        per_image = elapsed / output_count
-        print(
-            f"{index:02d}/{args.runs} 回目: 1枚あたり {per_image:.2f} 秒 "
-            f"(合計: {elapsed:.2f} 秒, 出力: {', '.join(output_files)})"
-        )
+        output_count = len(output_files)
+        if output_count == 0:
+            print(
+                f"{index:02d}/{args.runs} 回目: 出力なし "
+                f"(生成時間: {elapsed:.2f} 秒)"
+            )
+        else:
+            per_image = elapsed / output_count
+            print(
+                f"{index:02d}/{args.runs} 回目: 1枚あたり {per_image:.2f} 秒 "
+                f"(合計: {elapsed:.2f} 秒, 出力: {', '.join(output_files)})"
+            )
 
     return 0
 

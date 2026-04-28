@@ -16,6 +16,8 @@ from bpy.types import Operator, Context
 if TYPE_CHECKING:
     from . import FourSProperties
 
+POLL_INTERVAL = 0.2
+
 
 class ComfyUIWebSocketClient:
     def __init__(self, props: FourSProperties) -> None:
@@ -41,7 +43,7 @@ class ComfyUIWebSocketClient:
             self._connect_and_listen(host, port, payload),
             self._loop,
         )
-        bpy.app.timers.register(self._poll, first_interval=0.1)
+        bpy.app.timers.register(self._poll, first_interval=POLL_INTERVAL)
 
     def stop(self) -> None:
         self._running = False
@@ -49,6 +51,8 @@ class ComfyUIWebSocketClient:
             self._future.cancel()
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=0.5)
 
     def _run_loop(self) -> None:
         if self._loop is None:
@@ -104,7 +108,7 @@ class ComfyUIWebSocketClient:
                 self.stop()
                 return None
 
-        return 0.2
+        return POLL_INTERVAL
 
 
 _active_client: ComfyUIWebSocketClient | None = None

@@ -55,6 +55,8 @@ class ComfyUIWebSocketClient:
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=THREAD_JOIN_TIMEOUT)
+            if self._thread.is_alive():
+                print("[4'S] WebSocket スレッドの終了待機がタイムアウトしました。")
 
     def _run_loop(self) -> None:
         if self._loop is None:

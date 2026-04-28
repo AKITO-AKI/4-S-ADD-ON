@@ -46,6 +46,13 @@ def _cleanup_finished_background_renders() -> None:
         _active_background_renders[:] = still_active
 
 
+def _background_cleanup_timer() -> float | None:
+    _cleanup_finished_background_renders()
+    with _background_lock:
+        has_active = bool(_active_background_renders)
+    return 5.0 if has_active else None
+
+
 def _close_background_renders() -> None:
     with _background_lock:
         for _, log_file in _active_background_renders:
@@ -338,6 +345,8 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
 
         with _background_lock:
             _active_background_renders.append((process, log_file))
+        if not bpy.app.timers.is_registered(_background_cleanup_timer):
+            bpy.app.timers.register(_background_cleanup_timer, first_interval=5.0)
         self.report(
             {"INFO"},
             f"バックグラウンドで Depth/Lineart を出力しています。 (PID: {process.pid})",
@@ -352,6 +361,8 @@ def register() -> None:
 
 
 def unregister() -> None:
+    if bpy.app.timers.is_registered(_background_cleanup_timer):
+        bpy.app.timers.unregister(_background_cleanup_timer)
     _close_background_renders()
     bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderDepthLineart)
     bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderPasses)

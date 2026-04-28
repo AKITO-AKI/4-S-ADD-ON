@@ -18,6 +18,12 @@ from utils.workflow_builder import WorkflowParams, build_workflow
 
 
 DEFAULT_RUNS = 10
+DEFAULT_TIMEOUT = 1800.0
+DEFAULT_POLL_INTERVAL = 1.0
+BACKOFF_MULTIPLIER = 1.5
+MAX_POLL_INTERVAL = 10.0
+CFG_COMPARE_REL_TOL = 1e-6
+CFG_COMPARE_ABS_TOL = 1e-6
 
 
 def _load_override_params(args: argparse.Namespace) -> dict[str, Any]:
@@ -33,7 +39,12 @@ def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
     if "cfg" in overrides and "cfg_scale" in overrides:
         cfg_value = float(overrides["cfg"])
         cfg_scale_value = float(overrides["cfg_scale"])
-        if not math.isclose(cfg_value, cfg_scale_value, rel_tol=1e-6, abs_tol=1e-6):
+        if not math.isclose(
+            cfg_value,
+            cfg_scale_value,
+            rel_tol=CFG_COMPARE_REL_TOL,
+            abs_tol=CFG_COMPARE_ABS_TOL,
+        ):
             print(
                 "警告: 'cfg' と 'cfg_scale' が同時指定されています。"
                 " 'cfg_scale' を優先します。",
@@ -70,7 +81,7 @@ def _wait_for_completion(
     port: int,
     prompt_id: str,
     poll_interval: float = 1.0,
-    timeout: float = 1800.0,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> list[str]:
     start = time.monotonic()
     current_interval = poll_interval
@@ -82,7 +93,7 @@ def _wait_for_completion(
         if time.monotonic() - start > timeout:
             raise TimeoutError("生成がタイムアウトしました。")
         time.sleep(current_interval)
-        current_interval = min(current_interval * 1.5, 10.0)
+        current_interval = min(current_interval * BACKOFF_MULTIPLIER, MAX_POLL_INTERVAL)
 
 
 def main() -> int:
@@ -94,8 +105,13 @@ def main() -> int:
     parser.add_argument("--params", help="上書き用 JSON 文字列")
     parser.add_argument("--params-file", help="上書き用 JSON ファイルパス")
     parser.add_argument("--runs", type=int, default=DEFAULT_RUNS, help="実行回数")
-    parser.add_argument("--timeout", type=float, default=1800.0, help="タイムアウト秒")
-    parser.add_argument("--poll-interval", type=float, default=1.0, help="ポーリング間隔")
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="タイムアウト秒")
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=DEFAULT_POLL_INTERVAL,
+        help="ポーリング間隔",
+    )
     args = parser.parse_args()
 
     overrides = _load_override_params(args)

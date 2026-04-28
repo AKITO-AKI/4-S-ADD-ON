@@ -22,8 +22,23 @@ DEFAULT_TIMEOUT = 1800.0
 DEFAULT_POLL_INTERVAL = 1.0
 BACKOFF_MULTIPLIER = 1.5
 MAX_POLL_INTERVAL = 10.0
+# CFG の微小な誤差を許容するための比較許容値
 CFG_COMPARE_REL_TOL = 1e-6
 CFG_COMPARE_ABS_TOL = 1e-6
+
+
+def _parse_float(value: Any, label: str) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} の値が不正です: {value}") from exc
+
+
+def _parse_int(value: Any, label: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} の値が不正です: {value}") from exc
 
 
 def _load_override_params(args: argparse.Namespace) -> dict[str, Any]:
@@ -38,33 +53,35 @@ def _load_override_params(args: argparse.Namespace) -> dict[str, Any]:
 def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
     cfg_value = overrides.get("cfg")
     cfg_scale_value = overrides.get("cfg_scale")
-    if cfg_value is not None and cfg_scale_value is not None:
-        cfg_value = float(cfg_value)
-        cfg_scale_value = float(cfg_scale_value)
+    cfg_value_float = _parse_float(cfg_value, "cfg") if cfg_value is not None else None
+    cfg_scale_float = (
+        _parse_float(cfg_scale_value, "cfg_scale") if cfg_scale_value is not None else None
+    )
+    if cfg_value_float is not None and cfg_scale_float is not None:
         if not math.isclose(
-            cfg_value,
-            cfg_scale_value,
+            cfg_value_float,
+            cfg_scale_float,
             rel_tol=CFG_COMPARE_REL_TOL,
             abs_tol=CFG_COMPARE_ABS_TOL,
         ):
             print(
                 "警告: 'cfg' と 'cfg_scale' が同時指定されています。"
-                " 'cfg_scale' を優先します。",
+                "'cfg_scale' を優先します。",
                 file=sys.stderr,
             )
-        params.cfg_scale = cfg_scale_value
+        params.cfg_scale = cfg_scale_float
     if "prompt" in overrides:
         params.positive_prompt = str(overrides["prompt"])
     if "negative_prompt" in overrides:
         params.negative_prompt = str(overrides["negative_prompt"])
-    if cfg_scale_value is not None and cfg_value is None:
-        params.cfg_scale = float(cfg_scale_value)
-    if cfg_value is not None and cfg_scale_value is None:
-        params.cfg_scale = float(cfg_value)
+    if cfg_scale_float is not None and cfg_value_float is None:
+        params.cfg_scale = cfg_scale_float
+    if cfg_value_float is not None and cfg_scale_float is None:
+        params.cfg_scale = cfg_value_float
     if "steps" in overrides:
-        params.steps = int(overrides["steps"])
+        params.steps = _parse_int(overrides["steps"], "steps")
     if "seed" in overrides:
-        params.seed = int(overrides["seed"])
+        params.seed = _parse_int(overrides["seed"], "seed")
 
 
 def _collect_output_files(history: dict, prompt_id: str) -> list[str]:
@@ -96,6 +113,7 @@ def _wait_for_completion(
         if time.monotonic() - start > timeout:
             raise TimeoutError("生成がタイムアウトしました。")
         time.sleep(current_interval)
+        # 長時間処理向けにポーリング間隔を緩やかに増やす
         current_interval = min(current_interval * BACKOFF_MULTIPLIER, MAX_POLL_INTERVAL)
 
 

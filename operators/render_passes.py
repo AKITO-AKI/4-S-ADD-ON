@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 from typing import IO
 import bpy
 from bpy.types import Operator, Context
@@ -27,19 +28,31 @@ from bpy.types import Operator, Context
 # ---------------------------------------------------------------------------
 
 _active_background_renders: list[tuple[subprocess.Popen, IO[str]]] = []
+_background_lock = threading.Lock()
 
 
 def _cleanup_finished_background_renders() -> None:
-    still_active: list[tuple[subprocess.Popen, IO[str]]] = []
-    for process, log_file in _active_background_renders:
-        if process.poll() is None:
-            still_active.append((process, log_file))
-        else:
+    with _background_lock:
+        still_active: list[tuple[subprocess.Popen, IO[str]]] = []
+        for process, log_file in _active_background_renders:
+            if process.poll() is None:
+                still_active.append((process, log_file))
+            else:
+                try:
+                    log_file.close()
+                except Exception:
+                    pass
+        _active_background_renders[:] = still_active
+
+
+def _close_background_renders() -> None:
+    with _background_lock:
+        for _, log_file in _active_background_renders:
             try:
                 log_file.close()
             except Exception:
                 pass
-    _active_background_renders[:] = still_active
+        _active_background_renders.clear()
 
 
 def _ensure_dir(path: str) -> str:
@@ -321,7 +334,8 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
             return {"CANCELLED"}
 
-        _active_background_renders.append((process, log_file))
+        with _background_lock:
+            _active_background_renders.append((process, log_file))
         self.report(
             {"INFO"},
             f"バックグラウンドで Depth/Lineart を出力しています。 (PID: {process.pid})",
@@ -336,5 +350,6 @@ def register() -> None:
 
 
 def unregister() -> None:
+    _close_background_renders()
     bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderDepthLineart)
     bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderPasses)

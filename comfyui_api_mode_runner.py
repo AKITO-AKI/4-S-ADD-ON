@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from typing import Any
@@ -32,7 +33,7 @@ def _apply_overrides(params: WorkflowParams, overrides: dict[str, Any]) -> None:
     if "cfg" in overrides and "cfg_scale" in overrides:
         cfg_value = float(overrides["cfg"])
         cfg_scale_value = float(overrides["cfg_scale"])
-        if cfg_value != cfg_scale_value:
+        if not math.isclose(cfg_value, cfg_scale_value, rel_tol=1e-6, abs_tol=1e-6):
             print(
                 "警告: 'cfg' と 'cfg_scale' が同時指定されています。"
                 " 'cfg_scale' を優先します。",
@@ -72,6 +73,7 @@ def _wait_for_completion(
     timeout: float = 1800.0,
 ) -> list[str]:
     start = time.monotonic()
+    current_interval = poll_interval
     while True:
         history = get_history(host, port, prompt_id)
         files = _collect_output_files(history, prompt_id)
@@ -79,12 +81,13 @@ def _wait_for_completion(
             return files
         if time.monotonic() - start > timeout:
             raise TimeoutError("生成がタイムアウトしました。")
-        time.sleep(poll_interval)
+        time.sleep(current_interval)
+        current_interval = min(current_interval * 1.5, 10.0)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="ComfyUI API モードでワークフローを 10 回連続実行します。"
+        description="ComfyUI API モードでワークフローを複数回連続実行します。"
     )
     parser.add_argument("--host", default="127.0.0.1", help="ComfyUI ホスト")
     parser.add_argument("--port", type=int, default=8188, help="ComfyUI ポート")

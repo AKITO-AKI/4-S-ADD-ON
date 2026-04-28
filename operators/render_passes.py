@@ -40,7 +40,7 @@ def _cleanup_finished_background_renders() -> None:
             else:
                 try:
                     log_file.close()
-                except Exception:
+                except OSError:
                     pass
         _active_background_renders[:] = still_active
 
@@ -50,7 +50,7 @@ def _close_background_renders() -> None:
         for _, log_file in _active_background_renders:
             try:
                 log_file.close()
-            except Exception:
+            except OSError:
                 pass
         _active_background_renders.clear()
 
@@ -328,7 +328,7 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
             )
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             if log_file is not None:
                 log_file.close()
             self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")

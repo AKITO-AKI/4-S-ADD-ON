@@ -8,14 +8,18 @@ import asyncio
 import json
 import queue
 import threading
+from typing import TYPE_CHECKING
 
 import bpy
 from bpy.types import Operator, Context
 
+if TYPE_CHECKING:
+    from . import FourSProperties
+
 
 class ComfyUIWebSocketClient:
-    def __init__(self, props: object) -> None:
-        self._props = props
+    def __init__(self, props: FourSProperties) -> None:
+        self._props: FourSProperties = props
         self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -53,7 +57,7 @@ class ComfyUIWebSocketClient:
     async def _connect_and_listen(self, host: str, port: int, payload: dict) -> None:
         try:
             import websockets
-        except Exception as exc:
+        except ImportError as exc:
             self._queue.put(("error", f"websockets 未インストール: {exc}"))
             return
 
@@ -63,7 +67,11 @@ class ComfyUIWebSocketClient:
                 await websocket.send(json.dumps(payload))
                 async for message in websocket:
                     self._queue.put(("message", str(message)))
-        except Exception as exc:
+        except (
+            websockets.exceptions.WebSocketException,
+            OSError,
+            asyncio.TimeoutError,
+        ) as exc:
             self._queue.put(("error", f"通信エラー: {exc}"))
         finally:
             self._queue.put(("done", "完了"))

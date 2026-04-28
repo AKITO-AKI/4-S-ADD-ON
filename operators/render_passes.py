@@ -16,6 +16,7 @@ Blender から AI に必要な素材を全自動で出力します。
 from __future__ import annotations
 
 import os
+import subprocess
 import bpy
 from bpy.types import Operator, Context
 
@@ -245,9 +246,67 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         return {"FINISHED"}
 
 
+class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
+    """Depth / Lineart をバックグラウンドでレンダリングして出力する"""
+
+    bl_idname = "solo_studio.render_depth_lineart"
+    bl_label = "Depth/Lineart をバックグラウンド出力"
+    bl_description = "Blender をバックグラウンド起動して Depth/Lineart を書き出します"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context: Context) -> set[str]:
+        blend_path = bpy.data.filepath
+        if not blend_path:
+            self.report({"ERROR"}, "Blend ファイルを保存してから実行してください。")
+            return {"CANCELLED"}
+
+        blender_bin = bpy.app.binary_path
+        if not blender_bin:
+            self.report({"ERROR"}, "Blender 実行ファイルが見つかりません。")
+            return {"CANCELLED"}
+
+        script_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "utils",
+                "depth_lineart_export.py",
+            )
+        )
+        if not os.path.isfile(script_path):
+            self.report({"ERROR"}, f"スクリプトが見つかりません: {script_path}")
+            return {"CANCELLED"}
+
+        output_root = bpy.path.abspath("//")
+        command = [
+            blender_bin,
+            "-b",
+            blend_path,
+            "--python",
+            script_path,
+            "--",
+            output_root,
+        ]
+
+        try:
+            subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            self.report({"ERROR"}, f"バックグラウンド実行に失敗しました: {exc}")
+            return {"CANCELLED"}
+
+        self.report({"INFO"}, "バックグラウンドで Depth/Lineart を出力しています。")
+        return {"FINISHED"}
+
+
 def register() -> None:
     bpy.utils.register_class(SOLOSTUDIO_OT_RenderPasses)
+    bpy.utils.register_class(SOLOSTUDIO_OT_RenderDepthLineart)
 
 
 def unregister() -> None:
+    bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderDepthLineart)
     bpy.utils.unregister_class(SOLOSTUDIO_OT_RenderPasses)

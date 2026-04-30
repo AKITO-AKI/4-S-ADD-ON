@@ -1,3 +1,13 @@
+やってないこと
+・フロントエンド部分の制作
+・インストーラー作成して導入手軽にする
+
+
+
+
+
+
+
 # 4-S-ADD-ON
 Solo Studio SystemS = 4S (FORCE) ADD-ON
 

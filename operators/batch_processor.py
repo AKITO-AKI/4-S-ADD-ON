@@ -118,7 +118,7 @@ class _BatchContext:
 # モジュールレベルのシングルトン
 # ---------------------------------------------------------------------------
 
-_active_batch: _BatchContext | None = None
+_active_batch: Optional[_BatchContext] = None
 _TIMER_INTERVAL: float = 0.5
 
 
@@ -149,6 +149,7 @@ def _batch_timer_callback() -> Optional[float]:
             props.batch_status = (
                 f"エラー (フレーム {ctx.current_frame}): {ctx.handler_error}"
             )
+            props.batch_is_running = False
             _active_batch = None
             return None
         elif ctx.handler_done:
@@ -170,11 +171,13 @@ def _batch_timer_callback() -> Optional[float]:
     elif ctx.state == "done":
         props.batch_status = "バッチ処理完了"
         props.batch_progress = 1.0
+        props.batch_is_running = False
         _configure_export_on_complete(ctx)
         _active_batch = None
         return None
 
     elif ctx.state == "error":
+        props.batch_is_running = False
         _active_batch = None
         return None
 
@@ -462,6 +465,7 @@ class SOLOSTUDIO_OT_BatchProcess(Operator):
 
         props.batch_status = "バッチ処理開始..."
         props.batch_progress = 0.0
+        props.batch_is_running = True
 
         if not bpy.app.timers.is_registered(_batch_timer_callback):
             bpy.app.timers.register(
@@ -499,6 +503,7 @@ class SOLOSTUDIO_OT_CancelBatch(Operator):
         props = context.scene.solo_studio
         props.batch_status = "キャンセルされました"
         props.batch_progress = 0.0
+        props.batch_is_running = False
 
         self.report({"INFO"}, "バッチ処理をキャンセルしました。")
         return {"FINISHED"}

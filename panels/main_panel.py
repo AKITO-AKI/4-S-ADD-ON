@@ -216,10 +216,7 @@ class SOLOSTUDIO_PT_Batch(_SoloStudioPanelBase):
         layout = self.layout
         props = context.scene.solo_studio
 
-        is_running = "処理" in props.batch_status and "完了" not in props.batch_status \
-            and "キャンセル" not in props.batch_status \
-            and "エラー" not in props.batch_status \
-            and "待機" not in props.batch_status
+        is_running = props.batch_is_running
 
         # --- フレーム範囲 ---
         layout.label(text="フレーム範囲:", icon="RENDER_ANIMATION")

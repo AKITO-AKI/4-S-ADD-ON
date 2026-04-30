@@ -139,10 +139,6 @@ import importlib
 operators_pkg = types.ModuleType("operators")
 sys.modules.setdefault("operators", operators_pkg)
 
-# Patch relative imports inside batch_processor by pre-populating submodule paths
-for key in list(sys.modules):
-    pass
-
 # We import the file directly as a top-level module to avoid relative import issues
 import importlib.util
 

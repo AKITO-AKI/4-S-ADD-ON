@@ -175,6 +175,11 @@ class SoloStudioProperties(PropertyGroup):
         default="//solo_studio_batch/",
         subtype="DIR_PATH",
     )
+    batch_is_running: BoolProperty(
+        name="バッチ処理中",
+        description="バッチ処理が現在実行中かどうか",
+        default=False,
+    )
     batch_status: StringProperty(
         name="バッチステータス",
         description="バッチ処理の現在の状態",

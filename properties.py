@@ -155,6 +155,41 @@ class SoloStudioProperties(PropertyGroup):
     )
 
     # ------------------------------------------------------------------
+    # Phase 4: バッチ処理設定
+    # ------------------------------------------------------------------
+    batch_frame_start: IntProperty(
+        name="バッチ開始フレーム",
+        description="バッチ処理の開始フレーム番号",
+        default=1,
+        min=0,
+    )
+    batch_frame_end: IntProperty(
+        name="バッチ終了フレーム",
+        description="バッチ処理の終了フレーム番号",
+        default=24,
+        min=0,
+    )
+    batch_output_dir: StringProperty(
+        name="バッチ出力ディレクトリ",
+        description="深度マップと生成画像の保存先フォルダ",
+        default="//solo_studio_batch/",
+        subtype="DIR_PATH",
+    )
+    batch_status: StringProperty(
+        name="バッチステータス",
+        description="バッチ処理の現在の状態",
+        default="待機中",
+    )
+    batch_progress: FloatProperty(
+        name="バッチ進捗率",
+        description="バッチ処理の進捗（0.0 〜 1.0）",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+    )
+
+    # ------------------------------------------------------------------
     # Phase 4: VSE 自動インポート設定
     # ------------------------------------------------------------------
     auto_import_vse: BoolProperty(

@@ -203,6 +203,72 @@ class SOLOSTUDIO_PT_Execute(_SoloStudioPanelBase):
 
 
 # ---------------------------------------------------------------------------
+# バッチ処理パネル
+# ---------------------------------------------------------------------------
+
+class SOLOSTUDIO_PT_Batch(_SoloStudioPanelBase):
+    bl_idname = "SOLOSTUDIO_PT_batch"
+    bl_label = "バッチ処理 (フレームシーケンス生成)"
+    bl_order = 65
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context: Context) -> None:
+        layout = self.layout
+        props = context.scene.solo_studio
+
+        is_running = "処理" in props.batch_status and "完了" not in props.batch_status \
+            and "キャンセル" not in props.batch_status \
+            and "エラー" not in props.batch_status \
+            and "待機" not in props.batch_status
+
+        # --- フレーム範囲 ---
+        layout.label(text="フレーム範囲:", icon="RENDER_ANIMATION")
+        row = layout.row(align=True)
+        row.prop(props, "batch_frame_start", text="開始")
+        row.prop(props, "batch_frame_end", text="終了")
+
+        # --- 出力ディレクトリ ---
+        layout.prop(props, "batch_output_dir", text="出力先")
+
+        layout.separator()
+
+        # --- 実行 / キャンセルボタン ---
+        row = layout.row(align=True)
+        row.scale_y = 1.4
+        run_row = row.row(align=True)
+        run_row.enabled = not is_running
+        run_row.operator(
+            "solo_studio.batch_process",
+            text="▶ バッチ処理開始",
+            icon="PLAY",
+        )
+        if is_running:
+            row.operator(
+                "solo_studio.cancel_batch",
+                text="",
+                icon="X",
+            )
+
+        # --- 進捗 ---
+        layout.separator()
+        layout.label(text=f"ステータス: {props.batch_status}", icon="INFO")
+        if props.batch_progress > 0.0:
+            layout.progress(
+                factor=props.batch_progress,
+                text=f"{int(props.batch_progress * 100)}%",
+                type="BAR",
+            )
+
+        layout.separator()
+        layout.label(text="MP4 エクスポート設定:", icon="FILE_MOVIE")
+        layout.operator(
+            "solo_studio.configure_vse_export",
+            text="VSE MP4 エクスポートを設定",
+            icon="OUTPUT",
+        )
+
+
+# ---------------------------------------------------------------------------
 # ポストプロセスパネル
 # ---------------------------------------------------------------------------
 
@@ -241,6 +307,7 @@ _CLASSES = [
     SOLOSTUDIO_PT_AnimateDiff,
     SOLOSTUDIO_PT_Connection,
     SOLOSTUDIO_PT_Execute,
+    SOLOSTUDIO_PT_Batch,
     SOLOSTUDIO_PT_PostProcess,
 ]
 

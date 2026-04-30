@@ -30,7 +30,7 @@ bl_info = {
 import bpy
 
 from . import properties
-from .operators import render_passes, send_to_comfyui, auto_import
+from .operators import render_passes, send_to_comfyui, auto_import, batch_processor
 from .panels import main_panel
 
 
@@ -39,11 +39,13 @@ def register() -> None:
     render_passes.register()
     send_to_comfyui.register()
     auto_import.register()
+    batch_processor.register()
     main_panel.register()
 
 
 def unregister() -> None:
     main_panel.unregister()
+    batch_processor.unregister()
     auto_import.unregister()
     send_to_comfyui.unregister()
     render_passes.unregister()

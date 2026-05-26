@@ -1,220 +1,228 @@
+# 4’S (SoloStudioSystemS - Force) ADD-ON
 
-
-
-# 4-S-ADD-ON
-Solo Studio SystemS = 4S (FORCE) ADD-ON
-
-Blender × ComfyUI を連携させ、アニメーションを半自動生成する「一人アニメスタジオ」アドオン。
-3D モーションデータと ローカル AI（AnimateDiff / IP-Adapter）を組み合わせ、  
-プロンプト＋参照画像から高品質なアニメーションを生成します。
+Blender とローカル AI（ComfyUI）を連携し、**少人数・個人でもアニメーション制作を完走しやすくする**ための制作支援アドオンです。  
+本プロダクトは、制作工程のうち **背景描写・コンポジション領域を AI で支援**し、クリエイターは **カメラワーク・モーション演出**に集中できるワークフローを提供します。
 
 ---
 
-## ⚡ クイックスタート（最短 3 分）
+## 1. プロダクト概要
 
-> **前提**: Blender 4.0 以上 ／ ComfyUI がローカルで起動済みであること
+- **システム名**: 4’S (SoloStudioSystemS - Force) ADD-ON
+- **主な対象**: 個人クリエイター、少人数制作チーム、映像・アニメーション制作学習者
+- **主な価値**:
+  - Blender 内で「素材抽出 → AI生成 → プレビュー」までを一気通貫
+  - ComfyUI ワークフローをアドオン側で吸収し、複雑設定を最小化
+  - 非同期進捗管理で、生成中も Blender 操作を継続しやすい
 
-### 1. アドオンをインストールする
+---
+
+## 2. システム構造（構成図）
+
+```mermaid
+flowchart LR
+    A[Blender / 4'S ADD-ON UI\nNパネル: SoloStudio] --> B[レンダリングパス抽出\nDepth Lineart Normal Mask BaseColor]
+    A --> C[ワークフローパラメータ生成\nPrompt CFG Steps Seed]
+    B --> D[ComfyUI Input]
+    C --> E[ComfyUI Prompt Queue API]
+    A --> F[参照画像アップロード\nchar_ref.png]
+    F --> D
+    D --> G[ComfyUI Workflow\nAnimateDiff + ControlNet + IP-Adapter]
+    E --> G
+    G --> H[動画/画像生成結果]
+    H --> I[進捗監視(WebSocket)\n完了検知]
+    I --> A
+    H --> J[VSE 自動/手動インポート]
+
+    K[(Optional Backend API\nFastAPI)] -. 認証/モデル管理/スナップショット .- A
+    L[(Optional Web Frontend\nReact + Vite)] -. API 利用 .- K
+```
+
+### コンポーネント一覧
+
+| コンポーネント | 役割 |
+|---|---|
+| Blender Add-on (`__init__.py`, `panels/`, `operators/`) | UI 提供、操作導線、各処理の起点 |
+| マルチパス出力 (`operators/render_passes.py`) | Depth / Lineart / Normal / Mask / BaseColor の抽出 |
+| ワークフロービルダー (`utils/workflow_builder.py`) | ComfyUI 用 JSON ワークフローの生成 |
+| ComfyUI 通信 (`utils/comfyui_api.py`) | `/prompt` `/upload/image` `/history` + WebSocket連携 |
+| 非同期ハンドラー (`utils/async_handler.py`) | Blender フリーズ抑制、進捗表示更新 |
+| バッチ処理 (`operators/batch_processor.py`) | フレーム単位の反復生成と VSE 配置 |
+| VSE 連携 (`operators/auto_import.py`) | 生成物のタイムライン投入 |
+| Optional Backend (`backend/`) | 認証・LoRA管理・スナップショット保存 API |
+| Optional Frontend (`frontend/`) | バックエンド連携向け Web UI |
+
+---
+
+## 3. 仕組み（データフロー）
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Blender Add-on
+    participant C as ComfyUI
+    participant V as Blender VSE
+
+    U->>B: プロンプト/参照画像/接続情報を設定
+    U->>B: マルチパスレンダリング実行
+    B->>B: Depth/Lineart/Normal 等を出力
+    B->>C: 参照画像を upload/image へ送信
+    B->>B: Workflow JSON を組み立て
+    B->>C: /prompt に投入
+    C-->>B: prompt_id を返却
+    B->>C: WebSocket で進捗監視
+    C-->>B: progress / executed / error
+    C-->>B: 生成ファイル名（history）
+    B->>V: 生成動画/画像をインポート（任意）
+    V-->>U: Blender 内でプレビュー・編集
+```
+
+### 実行時の主要入出力
+
+- **入力**: プロンプト、ネガティブプロンプト、CFG、Steps、Seed、参照画像、Blenderシーン
+- **中間データ**: 各種レンダーパス画像、ComfyUI ワークフロー JSON
+- **出力**: 生成動画/画像、VSE タイムライン上のシーケンス、（任意）MP4 エクスポート設定
+
+---
+
+## 4. 動作要件・前提
+
+- Blender 4.0 以上
+- ComfyUI がローカルで起動済み（既定: `127.0.0.1:8188`）
+- 完全ローカル実行を前提（クラウド必須ではない）
+- 軽量性よりも生成安定性・ワークフロー完走性を重視
+
+---
+
+## 5. 導入方法
+
+### 5.1 Blender アドオン導入
 
 ```bash
 python install_blender_addons.py --blender-version 4.0
 ```
 
-または Windows の場合は `dist/4-S-ADD-ON-setup.exe` を使ったインストーラー形式もあります。
+有効化手順:
+1. Blender 起動
+2. **編集 → プリファレンス → アドオン**
+3. `SoloStudio Director` を有効化
 
-Blender を起動し、**編集 → プリファレンス → アドオン** で  
-「SoloStudio Director」を有効化してください。
+Windows 配布向け `.exe` は `installer/windows/4s_addon_installer.iss` から作成できます。
 
-### 2. N パネルを開く
-
-3D ビューポートで `N` キーを押し、「**SoloStudio**」タブを選択します。  
-初回起動時はセットアップガイドが自動表示されます。
-
-### 3. 基本フローを実行する
-
-| ステップ | パネル | 操作 |
-|---------|--------|------|
-| ① | ComfyUI 接続設定 | ホスト `127.0.0.1`・ポート `8188` を確認 |
-| ② | キャラクター設定 | `char_ref.png`（参照画像）を指定 |
-| ③ | レンダリングパス設定 | 出力先を指定し「マルチパスレンダリング」を実行 |
-| ④ | AI 生成設定 | プロンプトを入力 |
-| ⑤ | 実行 / 進捗 | 「▶ ComfyUI へ送信」を押す |
-| ⑥ | ポストプロセス (VSE) | 完了後に動画を確認・編集 |
-
-> 💡 **N パネルの「ヘルプ / ガイド」セクション**からいつでもセットアップガイドを再表示できます。
-
----
-
-## 🗂 パネルリファレンス
-
-### キャラクター設定
-IP-Adapter に使用するキャラクター参照画像（`char_ref.png`）を指定します。  
-ComfyUI へ自動アップロードされ、キャラクターの外見一貫性を維持します。
-
-### レンダリングパス設定
-生成に必要な素材をマルチパスで出力します。
-
-| パス | 用途 |
-|------|------|
-| Depth | 奥行き情報。ControlNet Depth で構図を維持 |
-| Lineart | 輪郭線。Lineart ControlNet でアニメ調の線画を保持 |
-| Normal | 法線マップ。カメラ移動時の陰影を正確に再現 |
-| Character Mask | IP-Adapter の影響範囲をキャラクター領域に限定 |
-| Base Color | Workbench フラットカラー。色彩情報の基準 |
-
-### AI 生成設定
-ComfyUI に送るプロンプトとサンプリングパラメータを設定します。
-
-| 項目 | 説明 |
-|------|------|
-| ポジティブプロンプト | 生成したい映像の内容（例: `anime style, high quality`） |
-| ネガティブプロンプト | 除外したい要素（例: `lowres, blurry`） |
-| CFG スケール | プロンプトへの従順度（7〜8 が標準） |
-| ステップ数 | 品質と速度のトレードオフ（20〜30 推奨） |
-| シード値 | `-1` でランダム、固定値で再現可能 |
-
-### AnimateDiff 設定（上級）
-アニメーション生成に使う AnimateDiff の Sliding Window を調整します。  
-**通常はデフォルト値（コンテキスト長 16・重複 4）で問題ありません。**
-
-### ComfyUI 接続設定
-ComfyUI サーバーのホストとポートを指定します。  
-デフォルト `127.0.0.1:8188` でローカル実行の場合はそのままで使えます。
-
-### 実行 / 進捗
-「▶ ComfyUI へ送信」を押すと生成が始まります。  
-プログレスバーで進捗を確認でき、生成中は「×」でキャンセルできます。
-
-### バッチ処理（フレームシーケンス生成）
-複数フレームを連続して自動生成します。  
-フレーム範囲・出力先を指定して「▶ バッチ処理開始」を押します。
-
-### ポストプロセス（VSE）
-生成完了後に動画を Blender の Video Sequence Editor へ自動インポートします。  
-「生成後に VSE へ自動インポート」を有効にしておくと手動操作不要です。
-
-### ヘルプ / ガイド
-基本フロー・トラブルシュート・オンラインドキュメントリンクにアクセスできます。  
-セットアップガイドの再表示もここから行えます。
-
----
-
-## 🔧 トラブルシュート
-
-| 症状 | 原因 | 対処 |
-|------|------|------|
-| 「ComfyUI への送信に失敗」 | ComfyUI が起動していない | `http://127.0.0.1:8188` にアクセスして起動確認 |
-| 画像のアップロード警告 | `char_ref.png` のパスが無効 | キャラクター設定パネルでパスを再設定 |
-| 進捗バーが動かない | WebSocket 接続が切れている | ComfyUI を再起動して再度送信 |
-| レンダリングパスが出力されない | 出力先フォルダが存在しない / パスの誤り | `//solo_studio_passes/` などの有効なパスを指定 |
-| バッチ処理が止まる | 途中のフレームで ComfyUI がタイムアウト | ステップ数を下げるか ComfyUI の GPU メモリを確認 |
-| VSE に動画が表示されない | 自動インポートが無効 | ポストプロセスパネルで「自動インポート」を有効化 |
-
----
-
-## Blender アドオン導入インストーラー
-
-`install_blender_addons.py` で、以下 2 つのアドオンをまとめて導入できます。
-
-- `solo_studio_director`
-- `four_s_addon`
-
-### 使い方
-
-```bash
-python install_blender_addons.py --blender-version 4.0
-```
-
-既定では OS ごとの Blender ユーザーアドオンディレクトリへ導入し、同時に `dist/` に ZIP も作成します。
-
-### 主なオプション
-
-- `--addons-dir <path>`: 導入先を明示指定
-- `--zip-only`: ZIP 作成のみ（導入はしない）
-- `--dry-run`: 導入先と対象のみ確認（実際にはコピーしない）
-- `--dist-dir <path>`: ZIP 出力先を変更
-
-導入時に同名アドオンが既に存在する場合は自動でバックアップしてから置き換えます。
-
-### .exe スタイル (Windows GUI) インストーラー
-
-Windows で配布しやすい `.exe` インストーラーは、Inno Setup 用スクリプト
-`installer/windows/4s_addon_installer.iss` で作成できます。
-
-1. Inno Setup 6 をインストール
-2. Inno Setup Compiler (`ISCC.exe`) で `installer/windows/4s_addon_installer.iss` をビルド
-3. `dist/4-S-ADD-ON-setup.exe` が生成される
-
-インストーラーは `%APPDATA%\Blender Foundation\Blender\` 配下の既存バージョンを検出して
-既定の `addons` ディレクトリを自動設定し、必要に応じて変更できます。
-既存の `solo_studio_director` / `four_s_addon` がある場合は自動でバックアップします。
-
-## ComfyUI API モード 実行例
-
-`comfyui_api_mode_runner.py` を使うと、HTTP POST でワークフローを送信し、
-JSON でプロンプト等を上書きしたうえで 10 回連続実行できます。
-
-```bash
-python comfyui_api_mode_runner.py \
-  --host 127.0.0.1 \
-  --port 8188 \
-  --params '{"prompt":"demo","negative_prompt":"bad","cfg":7.5,"steps":20,"seed":1234}'
-```
-
-JSON ファイル指定も可能です。
-
-```bash
-python comfyui_api_mode_runner.py --params-file overrides.json
-```
-
-## バックエンド API (4'S Cloud Studio)
-
-`backend/` ディレクトリに FastAPI ベースのバックエンド API 雛形があります。
-
-### セットアップ
+### 5.2 (任意) バックエンド API
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # 必要な値を編集
-```
-
-### 開発サーバー起動
-
-```bash
+cp .env.example .env
 uvicorn main:app --reload
 ```
 
-Swagger UI は `http://localhost:8000/docs` で確認できます。
-
-### 主なエンドポイント
-
-| メソッド | パス | 説明 |
-|--------|------|------|
-| POST | `/auth/register` | ユーザー登録 |
-| POST | `/auth/login` | JWT アクセストークン取得 |
-| GET | `/models/{user_id}/lora` | LoRA モデル一覧取得（Blender アドオン用） |
-| POST | `/models/{user_id}/lora` | LoRA モデルファイルアップロード |
-| GET | `/models/{user_id}/lora/{filename}` | LoRA モデルファイルダウンロード |
-| DELETE | `/models/{user_id}/lora/{filename}` | LoRA モデルファイル削除 |
-| POST | `/snapshots/` | 生成パラメータスナップショット保存 |
-| GET | `/snapshots/` | スナップショット一覧取得 |
-| GET | `/snapshots/{id}` | スナップショット取得 |
-| PUT | `/snapshots/{id}` | スナップショット更新 |
-| DELETE | `/snapshots/{id}` | スナップショット削除 |
-
-> S3 互換ストレージ（AWS S3, MinIO など）の認証情報と PostgreSQL の接続情報を `.env` に設定してください。
+Swagger: `http://localhost:8000/docs`
 
 ---
 
-## Depth / Lineart 書き出し
+## 6. 操作マニュアル（標準ワークフロー）
 
-Blender の N パネル (SoloStudio) から「Depth/Lineart をバックグラウンド出力」を実行すると、
-プロジェクトフォルダ直下に depth/ と lineart/ が作成され、フレーム番号付きで保存されます。
+### 6.1 初回セットアップ
 
-コマンドラインから実行する場合:
+1. 3D ビューポートで `N` キー → `SoloStudio` タブ
+2. **ComfyUI 接続設定**でホスト/ポート確認
+3. **キャラクター設定**で `char_ref.png` を指定（任意だが推奨）
+
+### 6.2 単発生成（動画生成）
+
+1. **レンダリングパス設定**で出力先を指定し、必要パスを有効化
+2. **マルチパスレンダリング**を実行
+3. **AI生成設定**でプロンプト、CFG、Steps、Seed を入力
+4. **▶ ComfyUI へ送信**を実行
+5. **実行/進捗**でステータス・プログレスを確認
+6. 必要に応じて **ポストプロセス（VSE）**で生成物を取り込み
+
+### 6.3 バッチ処理（フレームシーケンス）
+
+1. **バッチ処理**で開始/終了フレームを指定
+2. 出力先を指定して **▶ バッチ処理開始**
+3. 完了後、VSE 上にフレームが順次配置される
+4. 必要に応じて **VSE MP4 エクスポート設定**を適用
+
+### 6.4 Depth/Lineart バックグラウンド出力
+
+Nパネルの「Depth/Lineart をバックグラウンド出力」または以下を使用:
 
 ```bash
 blender -b your_scene.blend --python utils/depth_lineart_export.py
 ```
+
+---
+
+## 7. 使用ルール（運用ポリシー）
+
+本プロダクトを安全・継続的に運用するため、以下を推奨します。
+
+1. **権利確認の徹底**: 参照画像・素材・学習済みモデルの利用条件を確認する
+2. **生成物の人間確認**: 公開前に必ず目視チェックと修正工程を入れる
+3. **責任ある公開**: AI生成を含む制作物は必要に応じて利用者に明示する
+4. **再現性の管理**: Seed・主要パラメータ・使用モデルを記録する
+5. **ローカル資産保護**: 出力フォルダとプロジェクトデータを定期バックアップする
+
+---
+
+## 8. 倫理・法的遵守
+
+本プロダクトは制作支援ツールであり、利用時は各法令・規約・倫理基準を遵守してください。
+
+- **著作権・著作者人格権**: 第三者の権利を侵害する素材利用を行わない
+- **肖像権・パブリシティ権**: 実在人物や識別可能な情報を扱う場合は許諾を得る
+- **利用規約遵守**: Blender、ComfyUI、各モデル、各プラグインのライセンスを確認する
+- **機微情報の扱い**: 個人情報・機密情報を含む画像を不用意に入力しない
+- **有害表現の抑制**: 差別・暴力扇動・違法行為を助長する用途へ利用しない
+
+ローカル実行であっても、法的責任と公開責任は利用者に帰属します。
+
+---
+
+## 9. 利用シーン
+
+- 個人アニメーション制作における背景描写・構図補助
+- プリビズ（絵コンテ〜ルック検証）の高速試作
+- 少人数チームの演出検証サイクル短縮
+- 企画段階のルック&モーション検証
+
+---
+
+## 10. トラブルシュート
+
+| 症状 | 主原因 | 対処 |
+|---|---|---|
+| ComfyUI 送信失敗 | ComfyUI 未起動/接続先誤り | `127.0.0.1:8188` と起動状態を確認 |
+| 参照画像警告 | パス不正 | `char_ref.png` の存在とパスを再設定 |
+| 進捗が止まる | WebSocket切断/キュー停滞 | ComfyUI 再起動、キュー確認 |
+| パス画像が出ない | 出力先不正 | 出力ディレクトリ権限・存在を確認 |
+| VSE に出力が見えない | 自動インポート無効 | ポストプロセス設定を確認 |
+
+---
+
+## 11. 今後の展望
+
+- ユーザーごとの制作スタイルに合わせた**パーソナライズ設定**
+- バックエンド連携の強化（モデル資産・スナップショット管理の高度化）
+- 生成品質と速度の両立に向けたワークフロー最適化
+- 他 DCC ツールへ展開可能な連携インターフェース整備
+- 運用時の透明性を高める監査ログ・実行レポート機能の拡張
+
+---
+
+## 12. 付属機能と関連ディレクトリ
+
+- `install_blender_addons.py`: Blender アドオン一括導入
+- `comfyui_api_mode_runner.py`: APIモードでの連続実行検証
+- `backend/`: FastAPI ベースの補助 API（認証、モデル管理、スナップショット）
+- `frontend/`: Web UI（バックエンド連携用）
+
+---
+
+## 13. 免責
+
+本ソフトウェアは現状有姿で提供されます。  
+利用により生じた成果物・権利処理・公開判断・法的適合性は、利用者の責任で確認してください。

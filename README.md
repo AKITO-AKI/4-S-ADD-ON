@@ -1,6 +1,6 @@
 やってないこと
 ・フロントエンド部分の制作
-・インストーラー作成して導入手軽にする
+・(完了) インストーラー作成して導入手軽にする
 
 
 
@@ -10,6 +10,30 @@
 
 # 4-S-ADD-ON
 Solo Studio SystemS = 4S (FORCE) ADD-ON
+
+## Blender アドオン導入インストーラー
+
+`install_blender_addons.py` で、以下 2 つのアドオンをまとめて導入できます。
+
+- `solo_studio_director`
+- `four_s_addon`
+
+### 使い方
+
+```bash
+python install_blender_addons.py --blender-version 4.0
+```
+
+既定では OS ごとの Blender ユーザーアドオンディレクトリへ導入し、同時に `dist/` に ZIP も作成します。
+
+### 主なオプション
+
+- `--addons-dir <path>`: 導入先を明示指定
+- `--zip-only`: ZIP 作成のみ（導入はしない）
+- `--dry-run`: 導入先と対象のみ確認（実際にはコピーしない）
+- `--dist-dir <path>`: ZIP 出力先を変更
+
+導入時に同名アドオンが既に存在する場合は自動でバックアップしてから置き換えます。
 
 ## ComfyUI API モード 実行例
 

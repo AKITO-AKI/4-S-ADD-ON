@@ -49,6 +49,7 @@ flowchart LR
 | バッチ処理 (`operators/batch_processor.py`) | フレーム単位の反復生成と VSE 配置 |
 | VSE 連携 (`operators/auto_import.py`) | 生成物のタイムライン投入 |
 | Optional Backend (`backend/`) | 認証・LoRA管理・スナップショット保存 API |
+| Optional Frontend (`frontend/`) | バックエンド連携向け Web UI |
 
 ---
 
@@ -177,7 +178,7 @@ blender -b your_scene.blend --python utils/depth_lineart_export.py
 - **機微情報の扱い**: 個人情報・機密情報を含む画像を不用意に入力しない
 - **有害表現の抑制**: 差別・暴力扇動・違法行為を助長する用途へ利用しない
 
-> ローカル実行であっても、法的責任と公開責任は利用者に帰属します。
+ローカル実行であっても、法的責任と公開責任は利用者に帰属します。
 
 ---
 

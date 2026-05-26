@@ -173,6 +173,15 @@ class SOLOSTUDIO_PT_Execute(_SoloStudioPanelBase):
         # --- 送信ボタン ---
         is_generating = "生成中" in props.generation_status
 
+        # 実行前チェック：未設定項目をヒントとして表示
+        if not props.char_ref_path:
+            hint = layout.row()
+            hint.alert = True
+            hint.label(
+                text="キャラクター参照画像が未設定です（キャラクター設定パネルで指定推奨）",
+                icon="INFO",
+            )
+
         row = layout.row(align=True)
         row.scale_y = 1.5
         op_row = row.row(align=True)
@@ -293,6 +302,58 @@ class SOLOSTUDIO_PT_PostProcess(_SoloStudioPanelBase):
         )
 
 
+
+# ---------------------------------------------------------------------------
+# ヘルプ / ガイドパネル
+# ---------------------------------------------------------------------------
+
+class SOLOSTUDIO_PT_Help(_SoloStudioPanelBase):
+    bl_idname = "SOLOSTUDIO_PT_help"
+    bl_label = "ヘルプ / ガイド"
+    bl_order = 100
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context: Context) -> None:
+        layout = self.layout
+
+        # 基本フロー
+        flow_box = layout.box()
+        flow_box.label(text="基本フロー", icon="QUESTION")
+        col = flow_box.column(align=True)
+        col.label(text="① ComfyUI を起動 (デフォルト: 127.0.0.1:8188)")
+        col.label(text="② キャラクター設定でchar_ref.png を指定")
+        col.label(text="③ マルチパスレンダリングを実行")
+        col.label(text="④ AI 生成設定でプロンプトを入力")
+        col.label(text="⑤「▶ ComfyUI へ送信」で生成開始")
+        col.label(text="⑥ VSE で生成された動画を確認")
+
+        layout.separator()
+
+        # ガイド・ドキュメントリンク
+        layout.operator(
+            "solo_studio.open_tutorial",
+            text="セットアップガイドを開く",
+            icon="HELP",
+        )
+        op = layout.operator(
+            "wm.url_open",
+            text="オンラインドキュメント (GitHub)",
+            icon="URL",
+        )
+        op.url = "https://github.com/AKITO-AKI/4-S-ADD-ON#readme"
+
+        layout.separator()
+
+        # よくある問題
+        trouble_box = layout.box()
+        trouble_box.label(text="よくある問題", icon="ERROR")
+        col = trouble_box.column(align=True)
+        col.label(text="送信失敗  → ComfyUI が起動しているか確認")
+        col.label(text="画像なし  → char_ref.png のパスを再設定")
+        col.label(text="進捗停止  → ComfyUI のタスクキューを確認")
+        col.label(text="VSE 未表示 → ポストプロセスの自動インポートを有効化")
+
+
 # ---------------------------------------------------------------------------
 # 登録
 # ---------------------------------------------------------------------------
@@ -306,6 +367,7 @@ _CLASSES = [
     SOLOSTUDIO_PT_Execute,
     SOLOSTUDIO_PT_Batch,
     SOLOSTUDIO_PT_PostProcess,
+    SOLOSTUDIO_PT_Help,
 ]
 
 

@@ -9,6 +9,38 @@ import types
 import unittest
 import pathlib
 
+_PATCHED_MODULES = [
+    "bpy",
+    "bpy.types",
+    "bpy.props",
+    "utils",
+    "utils.comfyui_api",
+    "utils.workflow_builder",
+    "utils.async_handler",
+    "operators",
+    "batch_processor",
+    "operators.batch_processor",
+    "operators.utils",
+    "operators.utils.comfyui_api",
+    "operators.utils.workflow_builder",
+    "operators.utils.async_handler",
+    "four_s_addon",
+    "four_s_addon.utils",
+    "four_s_addon.utils.comfyui_api",
+    "four_s_addon.utils.workflow_builder",
+    "four_s_addon.utils.async_handler",
+    "four_s_addon.operators",
+]
+_ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _PATCHED_MODULES}
+
+
+def _restore_patched_modules() -> None:
+    for name, original in _ORIGINAL_MODULES.items():
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
+
 # ---------------------------------------------------------------------------
 # Minimal bpy mock
 # ---------------------------------------------------------------------------
@@ -186,6 +218,7 @@ _batch_spec.loader.exec_module(batch_processor)
 configure_vse_mp4_export = batch_processor.configure_vse_mp4_export
 _BatchContext = batch_processor._BatchContext
 _resolve_comfyui_output = batch_processor._resolve_comfyui_output
+_restore_patched_modules()
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +371,10 @@ class TestResolveComfyuiOutput(unittest.TestCase):
         finally:
             import os
             os.unlink(tmp_path)
+
+
+def tearDownModule():
+    _restore_patched_modules()
 
 
 if __name__ == "__main__":

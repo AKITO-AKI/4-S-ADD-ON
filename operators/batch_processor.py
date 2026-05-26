@@ -242,7 +242,9 @@ def _do_render_depth(ctx: _BatchContext) -> None:
         temp_nodes.append(composite)
 
         if active_view_layer is None:
-            raise RuntimeError("有効な ViewLayer が取得できません。")
+            raise RuntimeError(
+                "有効な ViewLayer が取得できません。シーン初期化状態を確認してください。"
+            )
         active_view_layer.use_pass_mist = True
 
         temp_links.append(tree.links.new(rl.outputs["Mist"], normalize.inputs[0]))
@@ -257,7 +259,7 @@ def _do_render_depth(ctx: _BatchContext) -> None:
         bpy.ops.render.render(write_still=True)
         if not os.path.isfile(depth_path):
             raise RuntimeError(
-                f"深度マップが出力されませんでした: {depth_path} "
+                f"レンダリング完了後も深度マップが見つかりませんでした: {depth_path} "
                 "(レンダー設定・出力先権限・ディスク容量を確認してください)"
             )
 

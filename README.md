@@ -35,6 +35,20 @@ python install_blender_addons.py --blender-version 4.0
 
 導入時に同名アドオンが既に存在する場合は自動でバックアップしてから置き換えます。
 
+### .exe スタイル (Windows GUI) インストーラー
+
+Windows で配布しやすい `.exe` インストーラーは、Inno Setup 用スクリプト
+`installer/windows/4s_addon_installer.iss` で作成できます。
+
+1. Inno Setup 6 をインストール
+2. Inno Setup Compiler (`ISCC.exe`) で `installer/windows/4s_addon_installer.iss` をビルド
+3. `dist/4-S-ADD-ON-setup.exe` が生成される
+
+インストーラーは `%APPDATA%\Blender Foundation\Blender\` 配下の既存バージョンを検出して
+既定の `addons` ディレクトリを自動設定し、必要に応じて変更できます。
+既存の
+`solo_studio_director` / `four_s_addon` がある場合は自動でバックアップします。
+
 ## ComfyUI API モード 実行例
 
 `comfyui_api_mode_runner.py` を使うと、HTTP POST でワークフローを送信し、

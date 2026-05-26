@@ -29,7 +29,7 @@ flowchart LR
     D --> G[ComfyUI Workflow\nAnimateDiff + ControlNet + IP-Adapter]
     E --> G
     G --> H[動画/画像生成結果]
-    H --> I[進捗監視(WebSocket)\n完了検知]
+    H --> I["進捗監視(WebSocket)\n完了検知"]
     I --> A
     H --> J[VSE 自動/手動インポート]
 

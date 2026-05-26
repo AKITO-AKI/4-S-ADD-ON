@@ -334,7 +334,7 @@ class ProgressListener:
                 value = float(data.get("value", 0))
                 max_val = float(data.get("max", 1) or 1.0)
                 ratio = value / max_val if max_val > 0 else 0.0
-            except (TypeError, ValueError, ZeroDivisionError):
+            except (TypeError, ValueError):
                 ratio = 0.0
             ratio = max(0.0, min(1.0, ratio))
             self.on_progress(ratio)

@@ -215,27 +215,40 @@ def _do_render_depth(ctx: _BatchContext) -> None:
     orig_file_format = scene.render.image_settings.file_format
     orig_color_mode = scene.render.image_settings.color_mode
     orig_use_file_ext = scene.render.use_file_extension
+    active_view_layer = getattr(bpy.context, "view_layer", None)
+    orig_use_pass_mist = (
+        getattr(active_view_layer, "use_pass_mist", None)
+        if active_view_layer is not None else None
+    )
+    temp_nodes: list[object] = []
+    temp_links: list[object] = []
 
     try:
         # Depth (Mist) パス用コンポジターノードを設定
         scene.render.engine = "CYCLES"
         scene.use_nodes = True
         tree = scene.node_tree
-        tree.nodes.clear()
 
         rl = tree.nodes.new("CompositorNodeRLayers")
         rl.location = (-300, 0)
+        temp_nodes.append(rl)
 
         normalize = tree.nodes.new("CompositorNodeNormalize")
         normalize.location = (0, 0)
+        temp_nodes.append(normalize)
 
         composite = tree.nodes.new("CompositorNodeComposite")
         composite.location = (300, 0)
+        temp_nodes.append(composite)
 
-        scene.view_layers["ViewLayer"].use_pass_mist = True
+        if active_view_layer is None:
+            raise RuntimeError(
+                "有効な ViewLayer が取得できません。シーン初期化状態を確認してください。"
+            )
+        active_view_layer.use_pass_mist = True
 
-        tree.links.new(rl.outputs["Mist"], normalize.inputs[0])
-        tree.links.new(normalize.outputs[0], composite.inputs["Image"])
+        temp_links.append(tree.links.new(rl.outputs["Mist"], normalize.inputs[0]))
+        temp_links.append(tree.links.new(normalize.outputs[0], composite.inputs["Image"]))
 
         # 出力先を設定して単一フレームをレンダリング
         scene.render.filepath = depth_path
@@ -244,8 +257,31 @@ def _do_render_depth(ctx: _BatchContext) -> None:
         scene.render.use_file_extension = False
 
         bpy.ops.render.render(write_still=True)
+        if not os.path.isfile(depth_path):
+            raise RuntimeError(
+                f"レンダリング完了後も深度マップが見つかりませんでした: {depth_path} "
+                "(レンダー設定・出力先権限・ディスク容量を確認してください)"
+            )
+
+    except Exception as exc:
+        ctx.handler_error = f"深度マップのレンダリングに失敗しました: {exc}"
+        ctx.state = "error"
+        props.batch_status = f"エラー: {ctx.handler_error}"
+        return
 
     finally:
+        tree = scene.node_tree
+        if tree is not None:
+            for link in temp_links:
+                try:
+                    tree.links.remove(link)
+                except Exception:
+                    pass
+            for node in temp_nodes:
+                try:
+                    tree.nodes.remove(node)
+                except Exception:
+                    pass
         # レンダリング設定を復元
         scene.render.engine = orig_engine
         scene.use_nodes = orig_use_nodes
@@ -253,6 +289,8 @@ def _do_render_depth(ctx: _BatchContext) -> None:
         scene.render.image_settings.file_format = orig_file_format
         scene.render.image_settings.color_mode = orig_color_mode
         scene.render.use_file_extension = orig_use_file_ext
+        if active_view_layer is not None and orig_use_pass_mist is not None:
+            active_view_layer.use_pass_mist = orig_use_pass_mist
 
     ctx._depth_path = depth_path
     _do_send_to_comfyui(ctx, depth_path, frame)
@@ -303,7 +341,12 @@ def _do_send_to_comfyui(ctx: _BatchContext, depth_path: str, frame: int) -> None
         props.batch_status = f"エラー: {ctx.handler_error}"
         return
 
-    prompt_id = response.get("prompt_id", "")
+    prompt_id = str(response.get("prompt_id", "")).strip()
+    if not prompt_id:
+        ctx.handler_error = "ComfyUI から有効な prompt_id を取得できませんでした。"
+        ctx.state = "error"
+        props.batch_status = f"エラー: {ctx.handler_error}"
+        return
 
     # フラグをリセットしてハンドラーを起動
     ctx.handler_done = False
@@ -452,8 +495,15 @@ class SOLOSTUDIO_OT_BatchProcess(Operator):
             )
             return {"CANCELLED"}
 
-        out_dir = bpy.path.abspath(props.batch_output_dir)
-        os.makedirs(out_dir, exist_ok=True)
+        out_dir = bpy.path.abspath(props.batch_output_dir).strip()
+        if not out_dir:
+            self.report({"ERROR"}, "バッチ出力ディレクトリが未設定です。")
+            return {"CANCELLED"}
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except Exception as exc:
+            self.report({"ERROR"}, f"出力ディレクトリを作成できませんでした: {exc}")
+            return {"CANCELLED"}
 
         _active_batch = _BatchContext(
             frame_start=frame_start,
@@ -522,7 +572,15 @@ class SOLOSTUDIO_OT_ConfigureVSEExport(Operator):
 
     def execute(self, context: Context) -> set[str]:
         props = context.scene.solo_studio
-        out_dir = bpy.path.abspath(props.batch_output_dir)
+        out_dir = bpy.path.abspath(props.batch_output_dir).strip()
+        if not out_dir:
+            self.report({"ERROR"}, "バッチ出力ディレクトリが未設定です。")
+            return {"CANCELLED"}
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except Exception as exc:
+            self.report({"ERROR"}, f"出力ディレクトリを作成できませんでした: {exc}")
+            return {"CANCELLED"}
         output_path = os.path.join(out_dir, "output.mp4")
         configure_vse_mp4_export(context.scene, output_path)
         self.report(

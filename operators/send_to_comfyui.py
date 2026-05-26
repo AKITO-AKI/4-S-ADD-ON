@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from typing import Callable
 
 import bpy
 from bpy.types import Operator, Context
@@ -54,6 +55,10 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
         props = context.scene.solo_studio
         host = props.comfyui_host
         port = props.comfyui_port
+
+        if not str(host).strip():
+            self.report({"ERROR"}, "ComfyUI ホストが未設定です。接続先を設定してください。")
+            return {"CANCELLED"}
 
         # --- 実行前チェック ---
         if not props.positive_prompt.strip():
@@ -99,9 +104,14 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
                 )
 
         # --- ワークフロー構築 ---
-        wf_params = params_from_scene_props(props)
-        wf_params.char_ref_image = char_ref_name
-        workflow = build_workflow(wf_params)
+        try:
+            wf_params = params_from_scene_props(props)
+            wf_params.char_ref_image = char_ref_name
+            workflow = build_workflow(wf_params)
+        except Exception as exc:
+            self.report({"ERROR"}, f"ワークフロー構築に失敗しました: {exc}")
+            props.generation_status = f"構築エラー: {exc}"
+            return {"CANCELLED"}
 
         # --- ComfyUI へ送信 ---
         client_id = str(uuid.uuid4())
@@ -112,7 +122,11 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
             props.generation_status = f"送信エラー: {exc}"
             return {"CANCELLED"}
 
-        prompt_id = response.get("prompt_id", "")
+        prompt_id = str(response.get("prompt_id", "")).strip()
+        if not prompt_id:
+            self.report({"ERROR"}, "ComfyUI から有効な prompt_id を取得できませんでした。")
+            props.generation_status = "送信エラー: prompt_id が空です"
+            return {"CANCELLED"}
         props.prompt_id = prompt_id
         props.generation_progress = 0.0
         props.generation_status = "生成開始..."
@@ -128,7 +142,13 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
             on_complete=self._make_complete_callback(context, props),
             on_error=self._make_error_callback(props),
         )
-        _active_handler.start(host, port, prompt_id, client_id)
+        try:
+            _active_handler.start(host, port, prompt_id, client_id)
+        except Exception as exc:
+            _active_handler = None
+            self.report({"ERROR"}, f"非同期監視の開始に失敗しました: {exc}")
+            props.generation_status = f"監視開始エラー: {exc}"
+            return {"CANCELLED"}
 
         return {"FINISHED"}
 

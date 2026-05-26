@@ -350,8 +350,14 @@ def params_from_scene_props(props: object) -> WorkflowParams:
 
     char_ref = ""
     if props.char_ref_path:
-        import bpy
-        abs_path = bpy.path.abspath(props.char_ref_path)
+        abs_path = str(props.char_ref_path)
+        try:
+            import bpy
+            bpy_path = getattr(bpy, "path", None)
+            if bpy_path is not None and hasattr(bpy_path, "abspath"):
+                abs_path = bpy_path.abspath(props.char_ref_path)
+        except Exception:
+            pass
         char_ref = os.path.basename(abs_path)
 
     return WorkflowParams(

@@ -55,6 +55,21 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
         host = props.comfyui_host
         port = props.comfyui_port
 
+        # --- 実行前チェック ---
+        if not props.positive_prompt.strip():
+            self.report(
+                {"WARNING"},
+                "ポジティブプロンプトが空です。プロンプトを入力してから再実行してください。",
+            )
+            return {"CANCELLED"}
+
+        if not props.char_ref_path:
+            # キャラクター参照画像は省略可だが推奨のため情報通知
+            self.report(
+                {"INFO"},
+                "キャラクター参照画像が未設定です。設定するとキャラクターの再現性が向上します。",
+            )
+
         # --- 進行中の処理があれば警告 ---
         if _active_handler is not None:
             self.report({"WARNING"}, "すでに生成中です。完了をお待ちください。")

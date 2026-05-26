@@ -256,7 +256,10 @@ def _do_render_depth(ctx: _BatchContext) -> None:
 
         bpy.ops.render.render(write_still=True)
         if not os.path.isfile(depth_path):
-            raise RuntimeError(f"深度マップが出力されませんでした: {depth_path}")
+            raise RuntimeError(
+                f"深度マップが出力されませんでした: {depth_path} "
+                "(レンダー設定・出力先権限・ディスク容量を確認してください)"
+            )
 
     except Exception as exc:
         ctx.handler_error = f"深度マップのレンダリングに失敗しました: {exc}"
@@ -265,7 +268,7 @@ def _do_render_depth(ctx: _BatchContext) -> None:
         return
 
     finally:
-        tree = scene.node_tree if scene.node_tree is not None else None
+        tree = scene.node_tree
         if tree is not None:
             for link in temp_links:
                 try:

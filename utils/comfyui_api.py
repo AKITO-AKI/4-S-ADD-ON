@@ -330,9 +330,14 @@ class ProgressListener:
         data = msg.get("data", {})
 
         if msg_type == "progress":
-            value = data.get("value", 0)
-            max_val = data.get("max", 1) or 1
-            self.on_progress(value / max_val)
+            try:
+                value = float(data.get("value", 0))
+                max_val = float(data.get("max", 1) or 1.0)
+                ratio = value / max_val if max_val > 0 else 0.0
+            except (TypeError, ValueError, ZeroDivisionError):
+                ratio = 0.0
+            ratio = max(0.0, min(1.0, ratio))
+            self.on_progress(ratio)
 
         elif msg_type == "executed":
             if data.get("prompt_id") == self._prompt_id:
@@ -342,8 +347,13 @@ class ProgressListener:
                     outputs = history.get(self._prompt_id, {}).get("outputs", {})
                     files: list[str] = []
                     for node_output in outputs.values():
+                        if not isinstance(node_output, dict):
+                            continue
                         for key in ("videos", "images", "gifs"):
-                            for item in node_output.get(key, []):
+                            node_items = node_output.get(key, [])
+                            if not isinstance(node_items, list):
+                                continue
+                            for item in node_items:
                                 if "filename" in item:
                                     files.append(item["filename"])
                     self.on_complete(files)

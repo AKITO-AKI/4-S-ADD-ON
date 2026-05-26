@@ -140,7 +140,10 @@ class AsyncGenerationHandler:
                     f"生成中... {int(msg['value'] * 100)}%"
                 )
                 # UI を強制再描画
-                for area in bpy.context.screen.areas:
+                screen = getattr(bpy.context, "screen", None)
+                if screen is None:
+                    continue
+                for area in screen.areas:
                     if area.type == "VIEW_3D":
                         area.tag_redraw()
 

@@ -124,6 +124,8 @@ Swagger: `http://localhost:8000/docs`
 
 ## 6. 操作マニュアル（標準ワークフロー）
 
+> Blender初心者向けの独立マニュアル: **[BEGINNER_MANUAL_JA.md](./BEGINNER_MANUAL_JA.md)**
+
 ### 6.1 初回セットアップ
 
 1. 3D ビューポートで `N` キー → `SoloStudio` タブ

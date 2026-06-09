@@ -37,6 +37,83 @@ flowchart LR
     L[(Optional Web Frontend\nReact + Vite)] -. API 利用 .- K
 ```
 
+### 2.1 4’S ADD-ON 課題構造マップ（全体・依存・進捗）
+
+```mermaid
+flowchart TB
+    subgraph TOP[上段: 課題の大分類]
+        A[制作フロー]
+        B[品質安定]
+        C[UX/運用]
+        D[導入/保守]
+    end
+
+    subgraph MID[中段: 依存関係]
+        M1[入力設定]
+        M2[パス抽出]
+        M3[API投入]
+        M4[生成監視]
+        M5[VSE取込]
+        M6[初期導入]
+        M7[長期運用]
+    end
+
+    subgraph LOW[下段: 優先度×進捗]
+        L1["入力設定\nP1・🔄進行中"]
+        L2["パス抽出\nP1・⬜未着手"]
+        L3["API投入\nP1・⬜未着手"]
+        L4["生成監視\nP1・⬜未着手"]
+        L5["VSE取込\nP2・⬜未着手"]
+        L6["品質調整\nP1・⬜未着手"]
+        L7["再現管理\nP2・⬜未着手"]
+        L8["UX進捗\nP1・🔄進行中"]
+        L9["エラー復旧\nP1・⬜未着手"]
+        L10["初期導入\nP2・✅完了"]
+        L11["長期運用\nP2・⬜未着手"]
+        L12["拡張整備\nP3・⬜未着手"]
+        L13["法務倫理権利\nP1・⬜未着手"]
+    end
+
+    A --> M1 --> M2 --> M3 --> M4 --> M5
+    D --> M6 --> M7
+
+    B --> M3
+    B --> M4
+    C --> M1
+    C --> M2
+    C --> M3
+    C --> M4
+    C --> M5
+    D --> M6
+    D --> M7
+
+    M1 --> L1
+    M2 --> L2
+    M3 --> L3
+    M4 --> L4
+    M5 --> L5
+    B --> L6
+    B --> L7
+    C --> L8
+    C --> L9
+    M6 --> L10
+    M7 --> L11
+    D --> L12
+    L11 --> L13
+
+    classDef p1 fill:#ffe5e5,stroke:#cc4444,color:#111;
+    classDef p2 fill:#fff7df,stroke:#c28c00,color:#111;
+    classDef p3 fill:#e6f4ff,stroke:#2f74c0,color:#111;
+
+    class L1,L2,L3,L4,L6,L8,L9,L13 p1;
+    class L5,L7,L10,L11 p2;
+    class L12 p3;
+```
+
+補足:
+- 1ノード1課題、短文ラベルで判断用に集約しています。
+- 詳細仕様（実装手順・パラメータ詳細）は図外の各章を参照してください。
+
 ### コンポーネント一覧
 
 | コンポーネント | 役割 |

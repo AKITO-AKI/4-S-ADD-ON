@@ -137,6 +137,7 @@ class SOLOSTUDIO_OT_SendToComfyUI(Operator):
         )
 
         # --- 非同期ハンドラー起動 ---
+        global _active_handler
         _active_handler = AsyncGenerationHandler(
             props,
             on_complete=self._make_complete_callback(context, props),

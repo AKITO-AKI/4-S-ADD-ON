@@ -241,7 +241,6 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         # --- レンダーエンジン / 設定を保存 ---
         orig_engine = scene.render.engine
         orig_use_nodes = scene.use_nodes
-        orig_node_tree = None  # node_tree は直接保存できないため None
 
         passes_to_render: list[tuple[str, callable]] = []
 
@@ -260,6 +259,7 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
             self.report({"WARNING"}, "レンダリングするパスが選択されていません。")
             return {"CANCELLED"}
 
+        props.generation_status = f"マルチパスレンダリング開始..."
         total = len(passes_to_render)
         for idx, (pass_name, setup_fn) in enumerate(passes_to_render):
             self.report(

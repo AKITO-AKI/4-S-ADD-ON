@@ -23,6 +23,7 @@ if _repo_root not in sys.path:
 
 from utils.comfyui_api import (  # noqa: E402
     _MinimalWSClient,
+    _extract_output_filenames,
     build_base_url,
     ProgressListener,
 )
@@ -181,6 +182,72 @@ class TestProgressListenerMessageHandling(unittest.TestCase):
         self.assertEqual(progress_calls, [])
         self.assertEqual(complete_calls, [])
         self.assertEqual(error_calls, [])
+
+    def test_executing_none_node_triggers_complete(self) -> None:
+        listener, _, complete_calls, error_calls = self._make_listener()
+
+        from utils import comfyui_api
+
+        original_get_history = comfyui_api.get_history
+        try:
+            comfyui_api.get_history = lambda host, port, prompt_id: {
+                "test-id-123": {
+                    "outputs": {
+                        "10": {"images": [{"filename": "a.png"}]},
+                        "20": {"videos": [{"filename": "b.mp4"}]},
+                    }
+                }
+            }
+            listener._handle_message({
+                "type": "executing",
+                "data": {"prompt_id": "test-id-123", "node": None},
+            })
+        finally:
+            comfyui_api.get_history = original_get_history
+
+        self.assertEqual(error_calls, [])
+        self.assertEqual(complete_calls, [["a.png", "b.mp4"]])
+
+    def test_executed_after_finish_is_ignored(self) -> None:
+        listener, _, complete_calls, _ = self._make_listener()
+
+        from utils import comfyui_api
+
+        original_get_history = comfyui_api.get_history
+        try:
+            comfyui_api.get_history = lambda host, port, prompt_id: {
+                "test-id-123": {"outputs": {"1": {"images": [{"filename": "a.png"}]}}}
+            }
+            listener._handle_message({
+                "type": "executing",
+                "data": {"prompt_id": "test-id-123", "node": None},
+            })
+            listener._handle_message({
+                "type": "executed",
+                "data": {"prompt_id": "test-id-123"},
+            })
+        finally:
+            comfyui_api.get_history = original_get_history
+
+        self.assertEqual(complete_calls, [["a.png"]])
+
+
+class TestExtractOutputFilenames(unittest.TestCase):
+
+    def test_collects_images_videos_and_gifs(self) -> None:
+        history = {
+            "prompt-1": {
+                "outputs": {
+                    "12": {
+                        "images": [{"filename": "i1.png"}],
+                        "videos": [{"filename": "v1.mp4"}],
+                        "gifs": [{"filename": "g1.gif"}],
+                    }
+                }
+            }
+        }
+        files = _extract_output_filenames(history, "prompt-1")
+        self.assertEqual(files, ["v1.mp4", "i1.png", "g1.gif"])
 
 
 if __name__ == "__main__":

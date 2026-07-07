@@ -22,7 +22,7 @@ from typing import Callable
 import bpy
 from bpy.types import Operator, Context
 
-from ..utils.comfyui_api import queue_prompt, upload_image
+from ..utils.comfyui_api import interrupt_generation, queue_prompt, upload_image
 from ..utils.workflow_builder import build_workflow, params_from_scene_props
 from ..utils.async_handler import AsyncGenerationHandler
 
@@ -213,6 +213,10 @@ class SOLOSTUDIO_OT_CancelGeneration(Operator):
         _active_handler = None
 
         props = context.scene.solo_studio
+        try:
+            interrupt_generation(props.comfyui_host, props.comfyui_port)
+        except Exception as exc:
+            self.report({"WARNING"}, f"ComfyUI 側の停止要求に失敗しました: {exc}")
         props.generation_status = "キャンセルされました"
         props.generation_progress = 0.0
 

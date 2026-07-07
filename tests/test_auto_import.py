@@ -62,6 +62,8 @@ sys.modules.setdefault("four_s_addon.operators", operators_pkg)
 
 comfyui_api_mod = types.ModuleType("four_s_addon.utils.comfyui_api")
 comfyui_api_mod.get_history = lambda *args, **kwargs: {}
+comfyui_api_mod.queue_prompt = lambda *args, **kwargs: {"prompt_id": "test"}
+comfyui_api_mod.upload_image = lambda *args, **kwargs: {"name": "test.png"}
 sys.modules.setdefault("four_s_addon.utils", types.ModuleType("four_s_addon.utils"))
 sys.modules["four_s_addon.utils.comfyui_api"] = comfyui_api_mod
 

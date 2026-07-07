@@ -47,6 +47,11 @@ class SoloStudioProperties(PropertyGroup):
         description="キャラクターマスクをレンダリングする（IP-Adapter影響範囲限定）",
         default=True,
     )
+    mask_collection: StringProperty(
+        name="マスク対象コレクション",
+        description="Character Mask で白く抜き出すオブジェクトが属するコレクション名",
+        default="",
+    )
     render_base_color: BoolProperty(
         name="Base Color",
         description="Workbench Base Color パスをレンダリングする",

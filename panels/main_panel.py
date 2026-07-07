@@ -76,6 +76,8 @@ class SOLOSTUDIO_PT_RenderPasses(_SoloStudioPanelBase):
         row = col.row(align=True)
         row.prop(props, "render_normal", toggle=True)
         row.prop(props, "render_mask", toggle=True)
+        if props.render_mask:
+            col.prop(props, "mask_collection", text="マスク対象コレクション")
         row = col.row(align=True)
         row.prop(props, "render_base_color", toggle=True)
 

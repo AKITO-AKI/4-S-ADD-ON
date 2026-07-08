@@ -36,6 +36,7 @@ from utils.workflow_builder import (  # noqa: E402
     WorkflowParams,
     build_workflow,
     params_from_scene_props,
+    validate_workflow_params,
 )
 
 
@@ -205,6 +206,36 @@ class TestWorkflowParams(unittest.TestCase):
         p = WorkflowParams()
         self.assertGreaterEqual(p.context_length, 8)
         self.assertLessEqual(p.context_length, 32)
+
+
+class TestValidateWorkflowParams(unittest.TestCase):
+    def test_positive_prompt_required(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_workflow_params(WorkflowParams(positive_prompt="   "))
+
+    def test_context_overlap_must_be_less_than_context_length(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_workflow_params(WorkflowParams(context_length=8, context_overlap=8))
+
+    def test_strength_must_be_between_zero_and_one(self) -> None:
+        with self.assertRaises(ValueError):
+            validate_workflow_params(WorkflowParams(depth_strength=1.1))
+
+
+class TestParamsNormalisation(unittest.TestCase):
+    def test_overlap_is_normalised_from_scene_props(self) -> None:
+        props = types.SimpleNamespace(
+            positive_prompt="test",
+            negative_prompt="neg",
+            cfg_scale=7.0,
+            steps=20,
+            seed=1,
+            context_length=8,
+            context_overlap=99,
+            char_ref_path="",
+        )
+        params = params_from_scene_props(props)
+        self.assertEqual(params.context_overlap, 7)
 
 
 if __name__ == "__main__":

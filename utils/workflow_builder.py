@@ -12,8 +12,7 @@ ComfyUI API 形式の辞書として生成するモジュール。
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +69,57 @@ class WorkflowParams:
 
 
 # ---------------------------------------------------------------------------
+# Phase 1: パラメータ検証 / 正規化
+# ---------------------------------------------------------------------------
+
+def validate_workflow_params(params: WorkflowParams) -> WorkflowParams:
+    """Phase 1 要件に基づき、生成パラメータを検証して正規化したコピーを返す。"""
+    positive_prompt = str(params.positive_prompt).strip()
+    negative_prompt = str(params.negative_prompt).strip()
+    if not positive_prompt:
+        raise ValueError("ポジティブプロンプトは空にできません。")
+
+    if params.steps < 1:
+        raise ValueError("steps は 1 以上で指定してください。")
+    if params.cfg_scale < 1.0:
+        raise ValueError("cfg_scale は 1.0 以上で指定してください。")
+    if params.width <= 0 or params.height <= 0:
+        raise ValueError("width/height は 1 以上で指定してください。")
+    if params.frame_count < 1:
+        raise ValueError("frame_count は 1 以上で指定してください。")
+
+    if params.context_length < 1:
+        raise ValueError("context_length は 1 以上で指定してください。")
+    if params.context_overlap < 0:
+        raise ValueError("context_overlap は 0 以上で指定してください。")
+    if params.context_overlap >= params.context_length:
+        raise ValueError("context_overlap は context_length より小さくしてください。")
+
+    strengths = (
+        ("depth_strength", params.depth_strength),
+        ("lineart_strength", params.lineart_strength),
+        ("normal_strength", params.normal_strength),
+        ("ip_adapter_strength", params.ip_adapter_strength),
+    )
+    for name, value in strengths:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} は 0.0 〜 1.0 の範囲で指定してください。")
+
+    if not str(params.checkpoint).strip():
+        raise ValueError("checkpoint が未設定です。")
+    if not str(params.animatediff_motion_module).strip():
+        raise ValueError("animatediff_motion_module が未設定です。")
+
+    return WorkflowParams(
+        **{
+            **params.__dict__,
+            "positive_prompt": positive_prompt,
+            "negative_prompt": negative_prompt,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # ノード ID 割り当てヘルパー
 # ---------------------------------------------------------------------------
 
@@ -112,6 +162,7 @@ def build_workflow(params: WorkflowParams) -> dict:
       19 VAEDecode
       20 VHS_VideoCombine              (動画出力)
     """
+    params = validate_workflow_params(params)
     ids = _NodeIdAllocator()
     n_checkpoint    = ids.next()  # 1
     n_clip_pos      = ids.next()  # 2
@@ -360,14 +411,19 @@ def params_from_scene_props(props: object) -> WorkflowParams:
             pass
         char_ref = os.path.basename(abs_path)
 
+    context_length = max(1, int(props.context_length))
+    context_overlap = max(0, int(props.context_overlap))
+    if context_overlap >= context_length:
+        context_overlap = max(0, context_length - 1)
+
     return WorkflowParams(
         positive_prompt=props.positive_prompt,
         negative_prompt=props.negative_prompt,
         cfg_scale=props.cfg_scale,
         steps=props.steps,
         seed=props.seed,
-        frame_count=props.context_length,
-        context_length=props.context_length,
-        context_overlap=props.context_overlap,
+        frame_count=context_length,
+        context_length=context_length,
+        context_overlap=context_overlap,
         char_ref_image=char_ref or "char_ref.png",
     )

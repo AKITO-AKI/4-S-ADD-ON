@@ -18,6 +18,8 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator, Context
 
+from ..utils.comfyui_api import get_history
+
 
 class SOLOSTUDIO_OT_AutoImportVSE(Operator):
     """生成された動画を VSE へ自動インポートする"""
@@ -91,10 +93,13 @@ class SOLOSTUDIO_OT_AutoImportVSE(Operator):
     def _resolve_filepath(self, props: object) -> str:
         """
         動画ファイルの絶対パスを決定する。
-        1. output_filename が絶対パスならそのまま使用
-        2. ファイル名のみの場合は ComfyUI のデフォルト output/ を推定
+        1. output_filename が指定されていれば優先
+        2. prompt_id があれば /history から最新出力を解決
+        3. 上記で見つからなければローカル output/ から最新動画を探索
         """
-        filename = self.output_filename
+        filename = self.output_filename.strip()
+        if not filename:
+            filename = self._find_from_prompt_history(props)
         if not filename:
             filename = self._find_latest_output(props)
 
@@ -119,6 +124,78 @@ class SOLOSTUDIO_OT_AutoImportVSE(Operator):
 
         return ""
 
+    def _find_from_prompt_history(self, props: object) -> str:
+        """
+        直近の prompt_id の /history から出力ファイルを解決する。
+        """
+        prompt_id = str(getattr(props, "prompt_id", "")).strip()
+        if not prompt_id:
+            return ""
+
+        host = str(getattr(props, "comfyui_host", "")).strip()
+        port = int(getattr(props, "comfyui_port", 8188))
+        if not host:
+            return ""
+
+        try:
+            history = get_history(host, port, prompt_id)
+        except Exception:
+            return ""
+
+        outputs = history.get(prompt_id, {}).get("outputs", {})
+        if not isinstance(outputs, dict):
+            return ""
+
+        items: list[dict] = []
+        for node_output in outputs.values():
+            if not isinstance(node_output, dict):
+                continue
+            for key in ("videos", "images", "gifs"):
+                node_items = node_output.get(key, [])
+                if isinstance(node_items, list):
+                    for item in node_items:
+                        if isinstance(item, dict):
+                            items.append(item)
+
+        for item in reversed(items):
+            resolved = self._resolve_history_item(item)
+            if resolved:
+                return resolved
+
+        return ""
+
+    def _resolve_history_item(self, item: dict) -> str:
+        """
+        /history レスポンスの 1 アイテムから実在ファイルを解決する。
+        """
+        filename = str(item.get("filename", "")).strip()
+        if not filename:
+            return ""
+
+        if os.path.isabs(filename) and os.path.isfile(filename):
+            return filename
+
+        subfolder = str(item.get("subfolder", "")).strip()
+        output_type = str(item.get("type", "output")).strip().lower()
+        dir_name = {"input": "input", "temp": "temp"}.get(output_type, "output")
+
+        base_dirs = [
+            os.path.join(os.path.expanduser("~"), "ComfyUI"),
+            os.path.join(os.path.expanduser("~"), "comfyui"),
+            os.path.join("C:\\", "ComfyUI"),
+            os.path.join("/", "ComfyUI"),
+        ]
+
+        for base in base_dirs:
+            path = os.path.join(base, dir_name)
+            if subfolder:
+                path = os.path.join(path, subfolder)
+            path = os.path.join(path, filename)
+            if os.path.isfile(path):
+                return path
+
+        return ""
+
     def _find_latest_output(self, props: object) -> str:
         """
         ComfyUI output/ フォルダ内で最も新しい動画ファイルを探す。
@@ -127,7 +204,7 @@ class SOLOSTUDIO_OT_AutoImportVSE(Operator):
             os.path.join(os.path.expanduser("~"), "ComfyUI", "output"),
             os.path.join(os.path.expanduser("~"), "comfyui", "output"),
         ]
-        video_extensions = {".mp4", ".webm", ".gif", ".mov"}
+        video_extensions = {".mp4", ".webm", ".gif", ".mov", ".avi"}
 
         latest_file = ""
         latest_mtime = 0.0
@@ -157,11 +234,22 @@ class SOLOSTUDIO_OT_AutoImportVSE(Operator):
         現在のシーン、またはシーン名に "VSE" を含むシーンを返す。
         存在しない場合は新規シーンを作成します。
         """
-        # まず現在のシーンを試みる
-        scene = context.scene
+        scene = getattr(context, "scene", None)
         if scene is not None:
             return scene
-        return None
+
+        scenes = getattr(getattr(bpy, "data", None), "scenes", None)
+        if scenes is None:
+            return None
+
+        for s in scenes:
+            if "VSE" in getattr(s, "name", "").upper():
+                return s
+
+        try:
+            return scenes.new("VSE")
+        except Exception:
+            return None
 
 
 # ---------------------------------------------------------------------------

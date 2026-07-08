@@ -167,6 +167,12 @@ def _setup_mask_pass(
     tree.links.new(id_mask.outputs["Alpha"], composite.inputs["Image"])
     tree.links.new(id_mask.outputs["Alpha"], file_out.inputs[0])
 
+    if char_collection:
+        collection = bpy.data.collections.get(char_collection)
+        if collection is not None:
+            for obj in collection.all_objects:
+                obj.pass_index = 1
+
 
 def _setup_base_color_pass(scene: bpy.types.Scene, out_dir: str) -> None:
     """Workbench Base Color パス設定"""
@@ -251,7 +257,21 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         if props.render_normal:
             passes_to_render.append(("normal", _setup_normal_pass))
         if props.render_mask:
-            passes_to_render.append(("mask", lambda s, d: _setup_mask_pass(s, d, None)))
+            collection_name = str(props.mask_collection).strip()
+            passes_to_render.append(
+                (
+                    "mask",
+                    lambda s, d, c=collection_name or None: _setup_mask_pass(s, d, c),
+                )
+            )
+            if collection_name and bpy.data.collections.get(collection_name) is None:
+                self.report(
+                    {"WARNING"},
+                    (
+                        f"マスク対象コレクション '{collection_name}' が見つかりません。"
+                        " pass_index=1 のオブジェクトのみがマスク対象になります。"
+                    ),
+                )
         if props.render_base_color:
             passes_to_render.append(("base_color", _setup_base_color_pass))
 

@@ -108,6 +108,22 @@ def get_queue_info(host: str, port: int) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def interrupt_generation(host: str, port: int) -> dict:
+    """
+    ComfyUI の実行中ジョブを中断する。
+    """
+    base_url = build_base_url(host, port)
+    req = urllib.request.Request(
+        f"{base_url}/interrupt",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+        body = resp.read().decode("utf-8").strip()
+        return json.loads(body) if body else {}
+
+
 def upload_image(
     host: str,
     port: int,
@@ -284,6 +300,7 @@ class ProgressListener:
         self.on_error = on_error or (lambda msg: None)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._is_finished = False
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -326,6 +343,9 @@ class ProgressListener:
             ws.close()
 
     def _handle_message(self, msg: dict) -> None:
+        if self._is_finished:
+            return
+
         msg_type = msg.get("type")
         data = msg.get("data", {})
 
@@ -339,31 +359,44 @@ class ProgressListener:
             ratio = max(0.0, min(1.0, ratio))
             self.on_progress(ratio)
 
+        elif msg_type == "executing":
+            if data.get("prompt_id") == self._prompt_id and data.get("node") is None:
+                self._finish_prompt()
+
         elif msg_type == "executed":
+            # 互換フォールバック: executing(node=None) が来ない環境向け
             if data.get("prompt_id") == self._prompt_id:
-                # 履歴から出力ファイルを取得
-                try:
-                    history = get_history(self._host, self._port, self._prompt_id)
-                    outputs = history.get(self._prompt_id, {}).get("outputs", {})
-                    files: list[str] = []
-                    for node_output in outputs.values():
-                        if not isinstance(node_output, dict):
-                            continue
-                        for key in ("videos", "images", "gifs"):
-                            node_items = node_output.get(key, [])
-                            if not isinstance(node_items, list):
-                                continue
-                            for item in node_items:
-                                if "filename" in item:
-                                    files.append(item["filename"])
-                    self.on_complete(files)
-                except Exception as exc:
-                    self.on_error(f"履歴取得エラー: {exc}")
-                self._stop_event.set()
+                self._finish_prompt()
 
         elif msg_type == "execution_error":
             if data.get("prompt_id") == self._prompt_id:
+                self._is_finished = True
                 self.on_error(
                     f"ComfyUI 実行エラー: {data.get('exception_message', '不明')}"
                 )
                 self._stop_event.set()
+
+    def _finish_prompt(self) -> None:
+        self._is_finished = True
+        try:
+            history = get_history(self._host, self._port, self._prompt_id)
+            self.on_complete(_extract_output_filenames(history, self._prompt_id))
+        except Exception as exc:
+            self.on_error(f"履歴取得エラー: {exc}")
+        self._stop_event.set()
+
+
+def _extract_output_filenames(history: dict, prompt_id: str) -> list[str]:
+    outputs = history.get(prompt_id, {}).get("outputs", {})
+    files: list[str] = []
+    for node_output in outputs.values():
+        if not isinstance(node_output, dict):
+            continue
+        for key in ("videos", "images", "gifs"):
+            node_items = node_output.get(key, [])
+            if not isinstance(node_items, list):
+                continue
+            for item in node_items:
+                if isinstance(item, dict) and "filename" in item:
+                    files.append(item["filename"])
+    return files

@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+from contextlib import contextmanager
 from typing import IO
 import bpy
 from bpy.types import Operator, Context
@@ -71,6 +72,70 @@ def _ensure_dir(path: str) -> str:
 
 def _frame_range(scene: bpy.types.Scene) -> tuple[int, int]:
     return scene.frame_start, scene.frame_end
+
+
+def _resolve_projection_camera(
+    scene: bpy.types.Scene,
+    props: bpy.types.PropertyGroup,
+) -> bpy.types.Object | None:
+    camera = getattr(props, "projection_camera", None)
+    if camera is not None and camera.type == "CAMERA":
+        return camera
+    return scene.camera
+
+
+def _collect_collection_objects(
+    collection: bpy.types.Collection,
+) -> set[bpy.types.Object]:
+    collected: set[bpy.types.Object] = set()
+    stack = [collection]
+    while stack:
+        current = stack.pop()
+        collected.update(current.objects)
+        stack.extend(current.children)
+    return collected
+
+
+@contextmanager
+def _temporary_projection_camera(
+    scene: bpy.types.Scene,
+    camera: bpy.types.Object | None,
+):
+    original_camera = scene.camera
+    if camera is not None:
+        scene.camera = camera
+    try:
+        yield
+    finally:
+        scene.camera = original_camera
+
+
+@contextmanager
+def _temporary_target_filter(
+    scene: bpy.types.Scene,
+    target_collection: bpy.types.Collection | None,
+):
+    if target_collection is None:
+        yield
+        return
+
+    target_objects = _collect_collection_objects(target_collection)
+    if not target_objects:
+        yield
+        return
+
+    hidden_states: list[tuple[bpy.types.Object, bool]] = []
+    for obj in scene.objects:
+        if obj in target_objects or obj.type in {"CAMERA", "LIGHT"}:
+            continue
+        hidden_states.append((obj, obj.hide_render))
+        obj.hide_render = True
+
+    try:
+        yield
+    finally:
+        for obj, original_hide in hidden_states:
+            obj.hide_render = original_hide
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +300,15 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         props = context.scene.solo_studio
         scene = context.scene
 
+        if props.projection_camera is not None and props.projection_camera.type != "CAMERA":
+            self.report({"ERROR"}, "投影カメラには Camera オブジェクトを指定してください。")
+            return {"CANCELLED"}
+
+        projection_camera = _resolve_projection_camera(scene, props)
+        if projection_camera is None:
+            self.report({"ERROR"}, "投影カメラが未設定です。Scene Camera か投影カメラを指定してください。")
+            return {"CANCELLED"}
+
         out_dir = _ensure_dir(props.output_dir)
         frame_start, frame_end = _frame_range(scene)
 
@@ -261,16 +335,18 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
 
         props.generation_status = f"マルチパスレンダリング開始..."
         total = len(passes_to_render)
-        for idx, (pass_name, setup_fn) in enumerate(passes_to_render):
-            self.report(
-                {"INFO"},
-                f"[{idx + 1}/{total}] {pass_name} パスをレンダリング中...",
-            )
-            scene.render.engine = "CYCLES"
-            setup_fn(scene, out_dir)
+        with _temporary_projection_camera(scene, projection_camera):
+            with _temporary_target_filter(scene, props.target_collection):
+                for idx, (pass_name, setup_fn) in enumerate(passes_to_render):
+                    self.report(
+                        {"INFO"},
+                        f"[{idx + 1}/{total}] {pass_name} パスをレンダリング中...",
+                    )
+                    scene.render.engine = "CYCLES"
+                    setup_fn(scene, out_dir)
 
-            # アニメーションレンダリング実行
-            bpy.ops.render.render(animation=True, write_still=False)
+                    # アニメーションレンダリング実行
+                    bpy.ops.render.render(animation=True, write_still=False)
 
         # --- 設定を復元 ---
         scene.render.engine = orig_engine
@@ -293,6 +369,9 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
     bl_options = {"REGISTER"}
 
     def execute(self, context: Context) -> set[str]:
+        props = context.scene.solo_studio
+        scene = context.scene
+
         blend_path = bpy.data.filepath
         if not blend_path:
             self.report({"ERROR"}, "Blend ファイルを保存してから実行してください。")
@@ -315,6 +394,15 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
             self.report({"ERROR"}, f"スクリプトが見つかりません: {script_path}")
             return {"CANCELLED"}
 
+        if props.projection_camera is not None and props.projection_camera.type != "CAMERA":
+            self.report({"ERROR"}, "投影カメラには Camera オブジェクトを指定してください。")
+            return {"CANCELLED"}
+
+        projection_camera = _resolve_projection_camera(scene, props)
+        if projection_camera is None:
+            self.report({"ERROR"}, "投影カメラが未設定です。Scene Camera か投影カメラを指定してください。")
+            return {"CANCELLED"}
+
         output_root = bpy.path.abspath("//")
         log_path = os.path.join(output_root, "depth_lineart_render.log")
         command = [
@@ -325,7 +413,11 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
             script_path,
             "--",
             output_root,
+            "--camera",
+            projection_camera.name,
         ]
+        if props.target_collection is not None:
+            command.extend(["--target-collection", props.target_collection.name])
 
         _cleanup_finished_background_renders()
         log_file: IO[str] | None = None

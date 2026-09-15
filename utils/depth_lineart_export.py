@@ -6,6 +6,8 @@ Depth / Lineart Export Script
 
 from __future__ import annotations
 
+import argparse
+from contextlib import contextmanager
 import os
 import sys
 
@@ -78,9 +80,77 @@ def _setup_lineart_nodes(scene: bpy.types.Scene) -> None:
     tree.links.new(alpha_over.outputs[0], composite.inputs["Image"])
 
 
-def export_depth_lineart(output_root: str | None = None) -> None:
+def _collect_collection_objects(
+    collection: bpy.types.Collection,
+) -> set[bpy.types.Object]:
+    collected: set[bpy.types.Object] = set()
+    stack = [collection]
+    while stack:
+        current = stack.pop()
+        collected.update(current.objects)
+        stack.extend(current.children)
+    return collected
+
+
+@contextmanager
+def _temporary_target_filter(
+    scene: bpy.types.Scene,
+    target_collection: bpy.types.Collection | None,
+):
+    if target_collection is None:
+        yield
+        return
+
+    target_objects = _collect_collection_objects(target_collection)
+    if not target_objects:
+        yield
+        return
+
+    hidden_states: list[tuple[bpy.types.Object, bool]] = []
+    for obj in scene.objects:
+        if obj in target_objects or obj.type in {"CAMERA", "LIGHT"}:
+            continue
+        hidden_states.append((obj, obj.hide_render))
+        obj.hide_render = True
+
+    try:
+        yield
+    finally:
+        for obj, original_hide in hidden_states:
+            obj.hide_render = original_hide
+
+
+def _resolve_camera(
+    scene: bpy.types.Scene,
+    camera_name: str | None,
+) -> bpy.types.Object | None:
+    if camera_name:
+        camera = bpy.data.objects.get(camera_name)
+        if camera is None or camera.type != "CAMERA":
+            return None
+        return camera
+    return scene.camera
+
+
+def export_depth_lineart(
+    output_root: str | None = None,
+    camera_name: str | None = None,
+    target_collection_name: str | None = None,
+) -> int:
     scene = bpy.context.scene
     view_layer = scene.view_layers[0]
+    projection_camera = _resolve_camera(scene, camera_name)
+    if projection_camera is None:
+        print("[SoloStudio] ERROR: 投影カメラが見つかりません。")
+        return 1
+
+    target_collection = None
+    if target_collection_name:
+        target_collection = bpy.data.collections.get(target_collection_name)
+        if target_collection is None:
+            print(
+                f"[SoloStudio] WARNING: Target Collection が見つかりません: {target_collection_name}",
+            )
 
     project_dir = bpy.path.abspath("//")
     base_dir = output_root or project_dir
@@ -91,31 +161,48 @@ def export_depth_lineart(output_root: str | None = None) -> None:
 
     # Depth -> Lineart の順でフルアニメーションを連続レンダリング
     print(f"[SoloStudio] Rendering frames {scene.frame_start} - {scene.frame_end}")
-    view_layer.use_pass_mist = True
-    _setup_depth_nodes(scene)
-    _configure_render_output(scene, os.path.join(depth_dir, "depth_"), COLOR_MODE_BW)
-    bpy.ops.render.render(animation=True, write_still=False)
+    original_camera = scene.camera
+    scene.camera = projection_camera
+    try:
+        with _temporary_target_filter(scene, target_collection):
+            view_layer.use_pass_mist = True
+            _setup_depth_nodes(scene)
+            _configure_render_output(scene, os.path.join(depth_dir, "depth_"), COLOR_MODE_BW)
+            bpy.ops.render.render(animation=True, write_still=False)
 
-    scene.render.use_freestyle = True
-    if hasattr(view_layer, "use_freestyle"):
-        view_layer.use_freestyle = True
-    if hasattr(view_layer, "use_pass_freestyle"):
-        view_layer.use_pass_freestyle = True
-    scene.render.film_transparent = True
-    _ensure_freestyle_lines(view_layer)
-    _setup_lineart_nodes(scene)
-    _configure_render_output(scene, os.path.join(lineart_dir, "lineart_"), COLOR_MODE_BW)
-    bpy.ops.render.render(animation=True, write_still=False)
+            scene.render.use_freestyle = True
+            if hasattr(view_layer, "use_freestyle"):
+                view_layer.use_freestyle = True
+            if hasattr(view_layer, "use_pass_freestyle"):
+                view_layer.use_pass_freestyle = True
+            scene.render.film_transparent = True
+            _ensure_freestyle_lines(view_layer)
+            _setup_lineart_nodes(scene)
+            _configure_render_output(scene, os.path.join(lineart_dir, "lineart_"), COLOR_MODE_BW)
+            bpy.ops.render.render(animation=True, write_still=False)
+    finally:
+        scene.camera = original_camera
+
+    return 0
 
 
-def _parse_output_root(argv: list[str]) -> str | None:
-    if "--" not in argv:
-        return None
-    idx = argv.index("--")
-    if idx + 1 >= len(argv):
-        return None
-    return argv[idx + 1]
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("output_root", nargs="?", default=None)
+    parser.add_argument("--camera", dest="camera_name", default=None)
+    parser.add_argument("--target-collection", dest="target_collection_name", default=None)
+    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":
-    export_depth_lineart(_parse_output_root(sys.argv))
+    cli_args = []
+    if "--" in sys.argv:
+        cli_args = sys.argv[sys.argv.index("--") + 1 :]
+    parsed = _parse_args(cli_args)
+    raise SystemExit(
+        export_depth_lineart(
+            output_root=parsed.output_root,
+            camera_name=parsed.camera_name,
+            target_collection_name=parsed.target_collection_name,
+        ),
+    )

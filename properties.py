@@ -19,6 +19,20 @@ from bpy.types import PropertyGroup
 
 class SoloStudioProperties(PropertyGroup):
     # ------------------------------------------------------------------
+    # Phase 1: データ抽出基盤
+    # ------------------------------------------------------------------
+    projection_camera: PointerProperty(
+        name="投影カメラ",
+        description="Depth/Lineart 出力で基準にするカメラ",
+        type=bpy.types.Object,
+    )
+    target_collection: PointerProperty(
+        name="Target Objects",
+        description="Depth/Lineart 出力対象にするコレクション（未指定時は全体）",
+        type=bpy.types.Collection,
+    )
+
+    # ------------------------------------------------------------------
     # Phase 2: マルチパス書き出し設定
     # ------------------------------------------------------------------
     output_dir: StringProperty(

@@ -65,8 +65,14 @@ def _close_background_renders() -> None:
 
 
 def _ensure_dir(path: str) -> str:
+    if not str(path).strip():
+        raise ValueError("出力ディレクトリが未設定です。")
     abs_path = bpy.path.abspath(path)
+    if not str(abs_path).strip():
+        raise ValueError("出力ディレクトリが未設定です。")
     os.makedirs(abs_path, exist_ok=True)
+    if not os.path.isdir(abs_path):
+        raise OSError(f"出力先がディレクトリではありません: {abs_path}")
     return abs_path
 
 
@@ -94,6 +100,25 @@ def _collect_collection_objects(
         collected.update(current.objects)
         stack.extend(current.children)
     return collected
+
+
+def _renderable_target_objects(
+    target_collection: bpy.types.Collection,
+) -> set[bpy.types.Object]:
+    return {
+        obj for obj in _collect_collection_objects(target_collection)
+        if getattr(obj, "type", None) not in {"CAMERA", "LIGHT"}
+    }
+
+
+def _validate_target_collection_for_render(
+    target_collection: bpy.types.Collection | None,
+) -> str | None:
+    if target_collection is None:
+        return None
+    if not _renderable_target_objects(target_collection):
+        return "Target Objects が空です。レンダリング対象オブジェクトを追加してください。"
+    return None
 
 
 @contextmanager
@@ -300,6 +325,11 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
         props = context.scene.solo_studio
         scene = context.scene
 
+        target_error = _validate_target_collection_for_render(props.target_collection)
+        if target_error is not None:
+            self.report({"ERROR"}, target_error)
+            return {"CANCELLED"}
+
         if props.projection_camera is not None and props.projection_camera.type != "CAMERA":
             self.report({"ERROR"}, "投影カメラには Camera オブジェクトを指定してください。")
             return {"CANCELLED"}
@@ -309,7 +339,11 @@ class SOLOSTUDIO_OT_RenderPasses(Operator):
             self.report({"ERROR"}, "投影カメラが未設定です。Scene Camera か投影カメラを指定してください。")
             return {"CANCELLED"}
 
-        out_dir = _ensure_dir(props.output_dir)
+        try:
+            out_dir = _ensure_dir(props.output_dir)
+        except (ValueError, OSError) as exc:
+            self.report({"ERROR"}, f"出力ディレクトリの準備に失敗しました: {exc}")
+            return {"CANCELLED"}
         frame_start, frame_end = _frame_range(scene)
 
         # --- レンダーエンジン / 設定を保存 ---
@@ -371,6 +405,11 @@ class SOLOSTUDIO_OT_RenderDepthLineart(Operator):
     def execute(self, context: Context) -> set[str]:
         props = context.scene.solo_studio
         scene = context.scene
+
+        target_error = _validate_target_collection_for_render(props.target_collection)
+        if target_error is not None:
+            self.report({"ERROR"}, target_error)
+            return {"CANCELLED"}
 
         blend_path = bpy.data.filepath
         if not blend_path:

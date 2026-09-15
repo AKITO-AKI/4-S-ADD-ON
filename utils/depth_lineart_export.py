@@ -92,6 +92,15 @@ def _collect_collection_objects(
     return collected
 
 
+def _renderable_target_objects(
+    target_collection: bpy.types.Collection,
+) -> set[bpy.types.Object]:
+    return {
+        obj for obj in _collect_collection_objects(target_collection)
+        if getattr(obj, "type", None) not in {"CAMERA", "LIGHT"}
+    }
+
+
 @contextmanager
 def _temporary_target_filter(
     scene: bpy.types.Scene,
@@ -148,16 +157,22 @@ def export_depth_lineart(
     if target_collection_name:
         target_collection = bpy.data.collections.get(target_collection_name)
         if target_collection is None:
-            print(
-                f"[SoloStudio] WARNING: Target Collection が見つかりません: {target_collection_name}",
-            )
+            print(f"[SoloStudio] ERROR: Target Collection が見つかりません: {target_collection_name}")
+            return 1
+        if not _renderable_target_objects(target_collection):
+            print("[SoloStudio] ERROR: Target Collection が空です。レンダリング対象を追加してください。")
+            return 1
 
     project_dir = bpy.path.abspath("//")
     base_dir = output_root or project_dir
     base_dir = bpy.path.abspath(base_dir)
 
-    depth_dir = _ensure_dir(os.path.join(base_dir, "depth"))
-    lineart_dir = _ensure_dir(os.path.join(base_dir, "lineart"))
+    try:
+        depth_dir = _ensure_dir(os.path.join(base_dir, "depth"))
+        lineart_dir = _ensure_dir(os.path.join(base_dir, "lineart"))
+    except OSError as exc:
+        print(f"[SoloStudio] ERROR: 出力ディレクトリの作成に失敗しました: {exc}")
+        return 1
 
     # Depth -> Lineart の順でフルアニメーションを連続レンダリング
     print(f"[SoloStudio] Rendering frames {scene.frame_start} - {scene.frame_end}")

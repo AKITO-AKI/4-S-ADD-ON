@@ -66,6 +66,8 @@ class SOLOSTUDIO_PT_RenderPasses(_SoloStudioPanelBase):
         layout = self.layout
         props = context.scene.solo_studio
 
+        layout.prop(props, "projection_camera")
+        layout.prop(props, "target_collection")
         layout.prop(props, "output_dir")
 
         col = layout.column(align=True)
